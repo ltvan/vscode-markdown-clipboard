@@ -51,7 +51,7 @@
           "type": "string",
           "default": "assets",
           "scope": "resource",
-          "markdownDescription": "Folder for images embedded in pasted content. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). It may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. Links are always written relative to the document. An absolute path, an unknown variable, or `${workspaceFolder}` for a file outside the workspace is rejected: images go to `assets` and a warning says why."
+          "markdownDescription": "Folder for images embedded in pasted content. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). It may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. Links are always written relative to the document. An absolute path, an unknown variable, a start-only variable used elsewhere, a control character, or `${workspaceFolder}` for a file outside the workspace is rejected: images go to `assets` and a warning says why."
         }
       }
     }

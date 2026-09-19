@@ -12,7 +12,7 @@ src/vscode/        adapter — the only code that imports 'vscode'
 src/core/          pure TypeScript: no 'vscode', no file system, no network
 ```
 
-- ESLint enforces the core's purity (`eslint.config.mjs`): it may not import `vscode`, `fs`, `http`, `https`, `net`, nor use `fetch`. This is also how "no network access" is guaranteed, not just documented: the core cannot reach the network even if a future change tried to.
+- ESLint enforces the core's purity (`eslint.config.mjs`): it may not import `vscode`, `fs`, `http`, `https`, `net`, `http2`, `tls`, `dgram`, `dns`, `child_process`, `worker_threads` or `cluster`, nor use the `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` or `navigator` globals. ESLint blocks the usual routes to I/O from `src/core/`; it is a tripwire against accidental I/O, not a sandbox.
 - The seam is `convert(html, options) → { markdown, images[], dropped[] }` in `src/core/convert.ts`. The core returns image bytes and names; the adapter decides where files go.
 - The conversion engine (unified: rehype-parse → rehype-remark → remark-gfm → remark-stringify) is an implementation detail of `convert()`.
 - A fix belongs on the tree where its cause and its evidence both live:
@@ -32,10 +32,10 @@ src/core/          pure TypeScript: no 'vscode', no file system, no network
 The HTML on the clipboard comes from whatever the user copied — a web page, a document, anything — and is treated accordingly:
 
 - **No path is ever derived from the HTML.** An embedded image's file name is `image-<16 hex digits of a content hash>.<ext>`, where the hex digits come from hashing the decoded bytes and the extension comes from an allow-listed MIME type (`src/core/images.ts`). The HTML itself — its `src`, any attribute, anything — never contributes a character to a path.
-- **SVG is saved only when `isCleanSvg()` (`src/core/svg.ts`) accepts it, and it is an allow-list on purpose.** It recognizes a fixed set of drawing elements and rejects everything else: no `<!` of any kind (comment, doctype, CDATA), no event handler, no reference except a same-document `#…` fragment. An earlier block-list version was bypassed three separate ways during review; a positive list is the only kind that fails safe when it meets a spelling it doesn't recognize. Do not loosen this list to admit a rejected SVG — a hand-rolled regex-based scanner is not equipped to reason about markup it wasn't written to expect. If broader SVG support is ever wanted, the only sound way to get it is to parse the SVG with a real XML parser and inspect the resulting tree, not to extend the pattern matching in `svg.ts`.
-- **Unsafe link schemes are removed on the Markdown tree**, by `src/core/safeLinks.ts`: `javascript:`, `vbscript:` and `data:` targets keep their text and lose the link. This runs after `rehype-remark`, because several HTML elements become links or images by then, not only `<a>`.
+- **SVG is saved only when `isCleanSvg()` (`src/core/svg.ts`) accepts it, and it is an allow-list on purpose.** It recognizes a fixed set of drawing elements and rejects everything else: no `<!` of any kind (comment, doctype, CDATA), no event handler, no reference except a same-document `#…` fragment. A block-list cannot fail safe; the reasoning is in the spec's owner decisions. Do not loosen this list to admit a rejected SVG — a hand-rolled regex-based scanner is not equipped to reason about markup it wasn't written to expect. If broader SVG support is ever wanted, the only sound way to get it is to parse the SVG with a real XML parser and inspect the resulting tree, not to extend the pattern matching in `svg.ts`.
+- **Unsafe link schemes are removed on the Markdown tree**, by `src/core/safeLinks.ts`: a `javascript:`, `vbscript:` or `data:` link target keeps its text and loses the link. The same target on an image removes the image and reports it as a dropped image (`unsupported-source`), and a link left empty by that removal is removed too. This runs after `rehype-remark`, because several HTML elements become links or images by then, not only `<a>`.
 - **`<base>` is dropped** (`src/core/html/clean.ts`), because `hast-util-to-mdast` resolves every `href` and `src` against a `<base>` if one is present, and a clipboard fragment must not be allowed to rebase links this way.
-- **No network access from the core**, enforced by the ESLint rule described under Layers above.
+- **No accidental network or file-system access from the core** — ESLint blocks the usual routes to I/O from `src/core/` (see Layers above); it is a tripwire against accidental I/O, not a sandbox.
 
 ### Side effects happen when the edit lands
 
@@ -45,18 +45,19 @@ Instead, `PasteLandingWatcher` (`src/vscode/pasteLanding.ts`) watches the target
 
 ### Conversion runs in a worker thread
 
-`convertInBackground()` (`src/vscode/backgroundConvert.ts`) runs `convert()` in a Node worker thread, built as a second esbuild bundle (`dist/convertWorker.js`, from `src/vscode/convertWorker.ts`) next to `dist/extension.js`. This keeps the extension host responsive on a large clipboard, lets cancelling the paste terminate the worker outright, and gives the worker a 512 MB memory ceiling (`resourceLimits.maxOldGenerationSizeMb`) so a pathological clipboard fails with an error instead of exhausting the host. Where worker threads don't exist (a host without `node:worker_threads`, such as the web), conversion falls back to running in-process.
+`convertInBackground()` (`src/vscode/backgroundConvert.ts`) runs `convert()` in a Node worker thread, built as a second esbuild bundle (`dist/convertWorker.js`, from `src/vscode/convertWorker.ts`) next to `dist/extension.js`. This keeps the extension host responsive on a large clipboard, lets cancelling the paste terminate the worker outright, and gives the worker a 512 MB memory ceiling (`resourceLimits.maxOldGenerationSizeMb`) so a pathological clipboard fails with an error instead of exhausting the host. Where worker threads don't exist (a host without `node:worker_threads`, such as the web), conversion falls back to running in-process (no web bundle is shipped today; the fallback only keeps the core web-compatible).
 
 `PasteAsMarkdownProvider` takes its converter as a constructor parameter (the `Converter` type in `src/vscode/pasteProvider.ts`) rather than importing `convertInBackground` directly, so unit tests can construct the provider with an in-process converter and never touch worker threads.
 
 ### Untrusted workspaces
 
-The manifest declares `capabilities.untrustedWorkspaces` with `restrictedConfigurations: ["markdownClipboard.imageDestination"]`. In a workspace VS Code has not marked trusted, the workspace's value for this setting is ignored and the default (`assets`) is used instead.
+The manifest declares `capabilities.untrustedWorkspaces` with `restrictedConfigurations: ["markdownClipboard.imageDestination"]`. In a workspace VS Code has not marked trusted, the workspace's value is ignored; the user-level value, or the default `assets`, applies instead.
 
 ## Tests
 
 - `test/core/` — unit tests and golden fixtures (`input.html` / `expected.md`). Every conversion bug becomes a new fixture. Fixtures are byte-exact: excluded from Prettier, EditorConfig and Git line-ending conversion.
 - `test/adapter/` — the adapter against a stubbed `vscode` module (`test/adapter/vscodeStub.ts`).
+- The security rules above are covered by `test/core/svg.test.ts`, the `test/core/fixtures/unsafe-links/` fixture, `test/core/convert.test.ts`, `test/adapter/pasteLanding.test.ts` and `test/adapter/backgroundConvert.test.ts`.
 - `test/e2e/` — inside VS Code, asserting user-observable behavior only. They seed the real system clipboard (`test/e2e/clipboard.ts`: `osascript` on macOS, PowerShell on Windows, CopyQ on Linux — not `xclip`, which can offer only one clipboard format at a time, where these tests need several) and wait by polling, because `editor.action.pasteAs` resolves before the edit is applied. The VS Code test window must have keyboard focus for these tests to mean anything: `editor.action.pasteAs` is inert without it. Run them on an otherwise-idle machine, or under a virtual display, not in the background while using the machine for something else.
 
 ## Known behavior

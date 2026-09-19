@@ -28,12 +28,12 @@ Each criterion is user-observable and maps to at least one test (see [Testing](#
 - AC2. A normal paste (`editor.action.clipboardPasteAction`, Ctrl/Cmd+V) is never converted. For each of three clipboard shapes — HTML only, HTML + plain text, HTML + image — the document after a normal paste does not contain the converted form of the fixture's sentinel (the HTML carries `<b>SENTINEL</b>`; the document must not contain `**SENTINEL**`) — for HTML only and HTML + image that is the entire assertion, since the built-in paste may legitimately act there; for HTML + plain text the document additionally contains exactly the seeded plain-text flavor (fixtures are chosen so the built-in Markdown paste does not transform them). The extension ships no default keybinding.
 - AC3. Conversion covers: headings, paragraphs, bold, italic, strikethrough, links, ordered / unordered / nested lists, task lists, blockquotes, inline code, fenced code blocks, GFM tables, horizontal rules and line breaks. Hard line breaks are written as a trailing backslash. `<script>`, `<style>` and comments produce no output. A link whose target uses the `javascript:`, `vbscript:` or `data:` scheme keeps its text and loses the link. Raw HTML is never passed through: an element with no Markdown equivalent (`<u>`, `<sub>`, `<details>`, merged-cell or nested tables) is reduced to its text content.
 - AC4. `<img src="https://…" alt="x">` becomes `![x](https://…)`; a missing `alt` gives `![](…)`. No network request is made.
-- AC5. `<img src="data:image/png;base64,…">` creates a file under the image destination and inserts `![alt](<relative path>)`. Supported types: PNG, JPEG, GIF, WebP, SVG. The file name is `image-<first 16 hex of SHA-256 of the bytes>.<ext>`, so pasting the same image twice reuses one file; within one paste, images are deduplicated by content, not by name. An embedded SVG is saved only if it is clean — it contains no `<script>`, no `on*=` event handler, no `<foreignObject>` and no external reference (`href` / `url()` not starting with `#`, `@import`); otherwise it is dropped as in AC7. Both base64 and percent-encoded `data:` URIs are decoded; an undecodable one is dropped as in AC7.
+- AC5. `<img src="data:image/png;base64,…">` creates a file under the image destination and inserts `![alt](<relative path>)`. Supported types: PNG, JPEG, GIF, WebP, SVG. The file name is `image-<first 16 hex of SHA-256 of the bytes>.<ext>`, so pasting the same image twice reuses one file; within one paste, images are deduplicated by content, not by name. An embedded SVG is saved only if it passes an allow-list safety check — strict UTF-8 that starts as `<svg`, only a fixed set of drawing, gradient and filter elements, no `<!` (comments, doctype, CDATA, entities), no event handlers, and only `#…` references; otherwise it is dropped as in AC7. Both base64 and percent-encoded `data:` URIs are decoded; an undecodable one is dropped as in AC7.
 - AC6. The image destination is the resource-scoped setting `markdownClipboard.imageDestination`, default `assets`.
   - A plain path is relative to the document's folder. `..` segments are allowed; an empty value means the document's own folder.
   - Variables: the value may start with `${workspaceFolder}` (the workspace folder that contains the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. This lets images live under the documentation root, e.g. `${workspaceFolder}/assets`.
   - The inserted link is always relative to the document: `${workspaceFolder}/assets` pasted into `docs/guide/intro.md` links `../../assets/<file>`.
-  - An absolute path, an unknown variable, a start-only variable used elsewhere, or `${workspaceFolder}` for a document outside every workspace folder is rejected — the default is used and a warning says why.
+  - An absolute path, an unknown variable, a start-only variable used elsewhere, a control character, or `${workspaceFolder}` for a document outside every workspace folder is rejected — the default is used and a warning says why.
 - AC7. In an untitled document (no folder), embedded images are dropped and a warning says so; the rest of the content is pasted. The same applies — image dropped, one warning summarizing what was dropped, rest pasted — to an embedded image of an unsupported type and to an `<img>` whose `src` is neither `http(s)` nor `data:` (Word's `file:///` temp paths, `blob:`, `cid:`, relative URLs).
 - AC8. With no HTML on the clipboard, the command falls back to a plain paste: it inserts the clipboard's plain-text flavor unchanged, in full at each cursor (unlike the built-in paste, it does not spread lines across multiple cursors). With neither HTML nor plain text it inserts nothing; VS Code's own "no paste edits" hint may appear and is accepted.
 - AC9. Failures are never silent.
@@ -57,7 +57,7 @@ The acceptance criteria elaborate the requirements in places. These elaborations
 - Embedded-image allow-list PNG, JPEG, GIF, WebP, SVG (AC5).
 - After the security review of 2026-09-20 (clipboard HTML is untrusted input):
   - File names use 16 hex digits, not 8, and one paste deduplicates by content — an 8-digit name collides in under a second, silently losing an image or pointing the document at an existing file.
-  - SVG is no longer saved verbatim: only SVGs passing a conservative cleanliness check are saved. A saved SVG ends up in the repository and may later be served from the project's own origin, where its scripts would run. A sanitizer was declined — a wrong one gives false safety, while a false positive here only drops an image.
+  - SVG is no longer saved verbatim: only SVGs passing a conservative cleanliness check are saved. A saved SVG ends up in the repository and may later be served from the project's own origin, where its scripts would run. A sanitizer was declined — a wrong one gives false safety, while a false positive here only drops an image. The check is an allow-list: a block-list was bypassed three ways in review.
   - Links with `javascript:`, `vbscript:` or `data:` targets keep only their text; other renderers than VS Code's preview may not block them.
   - Conversion runs in a background worker thread rather than under size limits: VS Code stays responsive, cancelling the paste terminates the worker, and the worker's memory ceiling turns a pathological clipboard into the AC9(a) error instead of an exhausted extension host.
   - The manifest declares that an untrusted workspace cannot set `markdownClipboard.imageDestination` (`capabilities.untrustedWorkspaces`), instead of relying on VS Code's default.
@@ -109,6 +109,8 @@ test/
   e2e/                    tests run inside VS Code
 ```
 
+Superseded in part during execution — see the plan's 'Changes during execution' and `docs/design-specs/extension.md`.
+
 - ESLint forbids, under `src/core/`, importing `vscode`, `fs`, `http`, `https`, `net` and using the `fetch` global. This rule is what guarantees "no network, no file system" in the core (AC4).
 - `convert()` returns a `Promise` (hashing is async in a web host) and is side-effect free: it returns image bytes and file names. Path and link computation is also pure and lives in `core/paths.ts`, including Windows separators (AC12). The adapter only wires: read `DataTransfer`, call the core, build the `WorkspaceEdit`, show messages.
 - The seam: `options = { imageDestination, canSaveImages }`; the result is `{ markdown, images[], dropped[] }`, where `images[]` holds bytes and file names and `dropped[]` holds one entry per omitted image with its reason (unsupported type, undecodable, unsupported source, cannot save) — the adapter turns `dropped[]` into the single AC7 warning. `canSaveImages` is false for an untitled document. The link written into the Markdown is computed by `core/paths.ts` from `imageDestination` and the file name alone (empty destination → bare file name; separators normalized and encoded per AC12); no document path is needed. Only the target URI needs it, and the adapter derives that via `core/paths.ts` too.
@@ -125,12 +127,12 @@ Rejected: **turndown** — string/DOM-rule based, needs a DOM implementation in 
 
 ### D4. Tooling
 
-- pnpm; esbuild bundles to a single `dist/extension.js`; packaging uses `vsce package --no-dependencies` (required with pnpm, safe because everything is bundled).
+- pnpm; esbuild bundles to `dist/extension.js` and `dist/convertWorker.js`; packaging uses `vsce package --no-dependencies` (required with pnpm, safe because everything is bundled).
 - `tsconfig.json` sets `strict: true` (which includes `strictNullChecks`) plus `noUncheckedIndexedAccess`, `noImplicitOverride`, `noFallthroughCasesInSwitch` and `exactOptionalPropertyTypes`. Most of this extension's failure modes are "the value is not there" — no HTML flavor on the clipboard, no active editor, an untitled document with no folder, a missing `alt` — and these flags make the compiler force each of those branches to be handled. They are enabled from the first commit because turning them on later is a large migration.
 - `tsc --noEmit` (strict) for type checking; ESLint (typescript-eslint) for linting; Prettier for formatting.
 - TypeScript formatting (`.prettierrc.json`): `singleQuote: true`, `printWidth: 100`, `semi: true`, `trailingComma: "all"`, `arrowParens: "always"`. The last three are Prettier's defaults, written out so the style does not shift if a future Prettier major changes a default. Semicolons are kept: they avoid the ASI hazards on lines starting with `(`, `[` or a template literal, and match VS Code's own code and samples. Single quotes are the prevailing TypeScript convention; width 100 because `vscode.*` calls wrap awkwardly at 80. `eslint-config-prettier` turns off ESLint rules that overlap with Prettier.
 - `engines.vscode` is `^1.97.0`, the first release with the stable document-paste API.
-- Quality gates, recorded in `CLAUDE.md`: `pnpm lint && pnpm typecheck && pnpm test` (`pnpm lint` includes `prettier --check`).
+- Quality gates, recorded in the contributor guide's `Quality gates:` line: `pnpm format && pnpm lint && pnpm typecheck && pnpm test` (`pnpm lint` includes `prettier --check`).
 
 ## Testing
 
@@ -178,7 +180,7 @@ Checked on 2026-09-20 against the `@types/vscode` typings and by a throwaway spi
 ## Documentation produced by the plan
 
 - `docs/design-specs/extension.md` — the enduring architecture, from D2.
-- The `Quality gates:` line in `CLAUDE.md`.
+- The contributor guide's `Quality gates:` line.
 
 ## Out of scope
 
