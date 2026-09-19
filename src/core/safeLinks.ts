@@ -28,10 +28,16 @@ export function dropUnsafeTargets(tree: Root): void {
     }
     return undefined;
   });
-  // a link whose only content was such an image now says nothing at all
-  visit(tree, 'link', (node, index, parent) => {
-    if (!parent || index === undefined || node.children.length > 0) return undefined;
-    parent.children.splice(index, 1);
-    return index;
-  });
+  // a link whose only content was such an image now says nothing at all — and removing
+  // it can empty out a link that wraps it in turn, so repeat until nothing more changes
+  let removedAny: boolean;
+  do {
+    removedAny = false;
+    visit(tree, 'link', (node, index, parent) => {
+      if (!parent || index === undefined || node.children.length > 0) return undefined;
+      parent.children.splice(index, 1);
+      removedAny = true;
+      return index;
+    });
+  } while (removedAny);
 }

@@ -69,6 +69,12 @@ export function clean(tree: Root): void {
       return [SKIP, index];
     }
     if (node.type !== 'element') return undefined;
+    // hast-util-to-mdast resolves every href and src against a <base>, which a clipboard
+    // fragment must not be allowed to rewrite links with — and an unsafe href there throws
+    if (node.tagName === 'base') {
+      parent.children.splice(index, 1);
+      return [SKIP, index];
+    }
     // Word's <o:p> and its smart tags: the wrapper goes, the text it wraps stays —
     // except for a namespaced script or style, whose content is not text to keep
     if (node.tagName.includes(':')) {

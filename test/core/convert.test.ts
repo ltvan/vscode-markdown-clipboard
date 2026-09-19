@@ -96,6 +96,18 @@ describe('convert: lists', () => {
   });
 });
 
+describe('convert: <base>', () => {
+  it('drops a base with an unsafe href instead of failing the whole paste', async () => {
+    const result = await convert('<base href="javascript:alert(1)"><a href="x">t</a>', save);
+    expect(result.markdown).toBe('[t](x)');
+  });
+
+  it('does not rebase links against a base href', async () => {
+    const result = await convert('<base href="https://site.example/dir/"><a href="x">t</a>', save);
+    expect(result.markdown).toBe('[t](x)');
+  });
+});
+
 describe('convert: unsafe link and image targets', () => {
   it.each([
     ['an iframe', '<iframe src="javascript:alert(1)" title="click me"></iframe>', 'click me'],
@@ -110,6 +122,14 @@ describe('convert: unsafe link and image targets', () => {
   it('drops an unsafe image, and the link it leaves empty, alt text and all', async () => {
     const result = await convert('<video poster="javascript:alert(1)">cap</video>', save);
     expect(result.markdown).toBe('');
+  });
+
+  it('drops an outer link left empty by removing the unsafe image it wrapped', async () => {
+    const result = await convert(
+      '<p>pre<a href="https://ok"><video poster="javascript:b"></video></a>post</p>',
+      save,
+    );
+    expect(result.markdown).toBe('prepost');
   });
 
   it('still links an embedded image that was saved', async () => {
