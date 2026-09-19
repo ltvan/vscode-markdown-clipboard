@@ -1,6 +1,6 @@
 # Paste as Markdown — implementation plan
 
-Status: draft (2026-09-20)
+Status: accepted (2026-09-20)
 
 **Goal:** Ship a VS Code extension with one explicit command, Paste as Markdown, that converts clipboard HTML (including embedded images) to Markdown in Markdown documents.
 
@@ -102,7 +102,7 @@ Step 8 adds `contributes` after its test has been seen failing. Everything else 
           "type": "string",
           "default": "assets",
           "scope": "resource",
-          "markdownDescription": "Folder for images embedded in pasted content. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). It may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. Links are always written relative to the document. An absolute path is rejected."
+          "markdownDescription": "Folder for images embedded in pasted content. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). It may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. Links are always written relative to the document. An absolute path, an unknown variable, or `${workspaceFolder}` for a file outside the workspace is rejected: images go to `assets` and a warning says why."
         }
       }
     }
@@ -400,6 +400,7 @@ describe('resolveDestination', () => {
     ['${documentDirName}/assets', 'assets'],
     ['assets/${documentBaseName}', 'assets/intro'],
     ['${workspaceFolder}/assets', '../../assets'],
+    ['${workspaceFolder}assets', '../../assets'],
     ['${workspaceFolder}', '../..'],
     ['${workspaceFolder}/docs/guide/img', 'img'],
     ['${workspaceFolder}/docs/assets/${documentBaseName}', '../assets/intro'],
@@ -2855,7 +2856,7 @@ src/core/          pure TypeScript: no 'vscode', no file system, no network
 - **A normal paste is never altered.** The paste provider returns nothing unless the trigger is an explicit Paste As. Every new paste feature keeps this guard.
 - **One atomic edit.** Text and created files travel in one `DocumentPasteEdit`, so one undo reverts both. VS Code applies the text even when a file cannot be created, so `ImageVerifier` checks the files after the paste lands and reports the missing ones.
 - **Failures are never silent.** Dropped images produce one warning; conversion and file failures produce an error.
-- **Paths.** Image links always use `/` and are percent-encoded; absolute destinations are rejected host-independently (`src/core/paths.ts`).
+- **Paths.** `resolveDestination()` in `src/core/paths.ts` expands `${workspaceFolder}`, `${documentDirName}` (start only) and `${documentBaseName}` into a path relative to the document's folder; `src/vscode/settings.ts` only supplies the document's location. Links are therefore always document-relative, use `/` and are percent-encoded. Absolute paths, unknown or misplaced variables, and `${workspaceFolder}` outside a workspace folder are rejected host-independently; the default is used and the provider warns.
 
 ## Tests
 
@@ -2887,7 +2888,7 @@ Copy from a web page, Word, Google Docs or Notion, then run **Markdown Clipboard
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `markdownClipboard.imageDestination` | `assets` | Folder for embedded images. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). Absolute paths are rejected. |
+| `markdownClipboard.imageDestination` | `assets` | Folder for embedded images. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). An absolute path, an unknown variable, or `${workspaceFolder}` for a file outside the workspace is rejected: images go to `assets` and a warning says why. |
 
 The destination may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's name without extension). Links are always written relative to the document, so `${workspaceFolder}/assets` pasted into `docs/guide/intro.md` gives `![](../../assets/image-….png)`.
 
