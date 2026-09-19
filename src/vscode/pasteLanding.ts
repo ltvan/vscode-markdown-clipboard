@@ -40,8 +40,10 @@ export class PasteLandingWatcher implements vscode.Disposable {
 
   expect(document: vscode.TextDocument, insertedText: string, effects: PasteEffects): void {
     const byText = this.pending.get(document) ?? new Map<string, () => void>();
-    this.pending.set(document, byText);
+    // disarming the previous watch for this text drops the document's entry when it was
+    // the last one, so the map is (re)installed only afterwards
     byText.get(insertedText)?.();
+    this.pending.set(document, byText);
 
     const subscription = vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document !== document) return;

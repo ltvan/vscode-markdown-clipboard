@@ -47,7 +47,7 @@ describe('PasteAsMarkdownProvider', () => {
 
   beforeEach(() => {
     testing.reset();
-    watcher = new PasteLandingWatcher();
+    watcher = new PasteLandingWatcher({ intervalMs: 1, attempts: 1 });
     vi.spyOn(watcher, 'expect');
     provider = new PasteAsMarkdownProvider(watcher, (html, options) => convert(html, options));
   });

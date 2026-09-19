@@ -77,13 +77,24 @@ describe('PasteLandingWatcher', () => {
   it('keeps one pending check per document and text, however often it is armed', async () => {
     const watcher = new PasteLandingWatcher(options);
     const effects = { warnings: ['dropped'], targets: [target] };
-    watcher.expect(doc, 'TEXT', effects);
-    watcher.expect(doc, 'TEXT', effects);
-    expect(testing.listenerCount()).toBe(1);
+    for (let arming = 0; arming < 4; arming++) {
+      watcher.expect(doc, 'TEXT', effects);
+      expect(testing.listenerCount()).toBe(1);
+    }
     testing.fireDidChangeTextDocument(doc, ['TEXT']);
+    expect(testing.listenerCount()).toBe(0);
     await vi.runAllTimersAsync();
     expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposes cleanly however often the same paste was armed', () => {
+    const watcher = new PasteLandingWatcher(options);
+    for (let arming = 0; arming < 3; arming++) {
+      watcher.expect(doc, 'TEXT', { warnings: ['dropped'], targets: [] });
+    }
+    watcher.dispose();
+    expect(testing.listenerCount()).toBe(0);
   });
 
   it('disarms everything when disposed', async () => {
