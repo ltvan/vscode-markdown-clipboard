@@ -129,24 +129,24 @@ Test-first throughout. Three layers:
 
 **Adapter tests (vitest, faked `DataTransfer` and a stubbed `vscode` module)** — the provider's branching: trigger-kind guard, no HTML → plain-text edit, neither flavor → no edit, untitled document, `convert()` throwing → error message and no edit, warnings chosen. Covers AC9(a), which no clipboard content can trigger because HTML parsing is error-tolerant, and the AC9(b) verifier against a faked file system. A manifest test asserts AC10(a) against `package.json`.
 
-**E2e tests (`@vscode/test-cli`, run inside VS Code)** — assert user-observable behavior only: document text, files on disk, shown messages, and the effect of invoking commands. They do not inspect provider objects, internal calls or the core's return values. VS Code has no API to read notifications, so a spy on `vscode.window.showWarningMessage` / `showErrorMessage` is the accepted stand-in for "a message is shown". The real system clipboard is seeded by a test-only per-OS helper (`osascript` / `xclip` / PowerShell), since VS Code has no API to write HTML to the clipboard; the helper lives under `test/` and is never shipped. Clipboard tests run serially and overwrite the developer's clipboard.
+**E2e tests (`@vscode/test-cli`, run inside VS Code)** — assert user-observable behavior only: document text, files on disk, shown messages, and the effect of invoking commands. They do not inspect provider objects, internal calls or the core's return values. VS Code has no API to read notifications, so a spy on `vscode.window.showWarningMessage` / `showErrorMessage` is the accepted stand-in for "a message is shown". The real system clipboard is seeded by a test-only per-OS helper (`osascript` / CopyQ / PowerShell; `xclip` can offer only one format at a time), since VS Code has no API to write HTML to the clipboard; the helper lives under `test/` and is never shipped. Clipboard tests run serially and overwrite the developer's clipboard.
 
 | Criterion | Core | Adapter | E2e |
 | --- | --- | --- | --- |
-| AC1 insert at cursor(s) / selection | | | ✓ |
-| AC2 normal paste never converted (3 clipboard shapes) | | ✓ | ✓ |
-| AC3 conversion constructs | ✓ | | |
-| AC4 remote image kept, no download | ✓ + lint rule | | ✓ |
-| AC5 embedded image saved + linked, deduplicated | ✓ | | ✓ |
+| AC1 insert at cursor(s) / selection |  |  | ✓ |
+| AC2 normal paste never converted (3 clipboard shapes) |  | ✓ | ✓ |
+| AC3 conversion constructs | ✓ |  |  |
+| AC4 remote image kept, no download | ✓ + lint rule |  | ✓ |
+| AC5 embedded image saved + linked, deduplicated | ✓ |  | ✓ |
 | AC6 destination setting | ✓ | ✓ | ✓ |
 | AC7 untitled doc / unsupported type / unsupported source | ✓ | ✓ | ✓ |
-| AC8 no HTML → plain paste | | ✓ | ✓ |
-| AC9 failures are never silent | | ✓ (a), (b) | ✓ (b), read-only folder, macOS / Linux only |
-| AC10 Markdown documents only | | ✓ (manifest) | ✓ |
-| AC11 raw image clipboard untouched | | | ✓ |
-| AC12 link separators and encoding | ✓ | | |
-| AC13 Word / Google Docs / Notion artifacts | ✓ | | |
-| AC14 formatting + suite green on 3 OSes | | | CI matrix |
+| AC8 no HTML → plain paste |  | ✓ | ✓ |
+| AC9 failures are never silent |  | ✓ (a), (b) | ✓ (b), read-only folder, macOS / Linux only |
+| AC10 Markdown documents only |  | ✓ (manifest) | ✓ |
+| AC11 raw image clipboard untouched |  |  | ✓ |
+| AC12 link separators and encoding | ✓ |  |  |
+| AC13 Word / Google Docs / Notion artifacts | ✓ |  |  |
+| AC14 formatting + suite green on 3 OSes |  |  | CI matrix |
 
 Clipboard seeding was proven on macOS by a spike (see below). The plan proves it on Linux and Windows when it adds the CI matrix; if seeding proves infeasible there, the owner is asked before any e2e case is downgraded to a by-hand case. E2e tests wait for outcomes by polling, because `editor.action.pasteAs` resolves before the edit is applied.
 
