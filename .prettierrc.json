@@ -1,3 +1,8 @@
 {
-  "proseWrap": "never"
+  "proseWrap": "never",
+  "printWidth": 100,
+  "singleQuote": true,
+  "semi": true,
+  "trailingComma": "all",
+  "arrowParens": "always"
 }
