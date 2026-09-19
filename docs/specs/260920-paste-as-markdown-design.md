@@ -32,7 +32,9 @@ Each criterion is user-observable and maps to at least one test (see [Testing](#
 - AC6. The image destination is the resource-scoped setting `markdownClipboard.imageDestination`, a path relative to the document's folder, default `assets`. `..` segments are allowed; an empty value means the document's own folder; an absolute path is rejected — the default is used and a warning says so.
 - AC7. In an untitled document (no folder), embedded images are dropped and a warning says so; the rest of the content is pasted. The same applies — image dropped, one warning summarizing what was dropped, rest pasted — to an embedded image of an unsupported type and to an `<img>` whose `src` is neither `http(s)` nor `data:` (Word's `file:///` temp paths, `blob:`, `cid:`, relative URLs).
 - AC8. With no HTML on the clipboard, the command falls back to a plain paste: it inserts the clipboard's plain-text flavor unchanged, in full at each cursor (unlike the built-in paste, it does not spread lines across multiple cursors). With neither HTML nor plain text it inserts nothing; VS Code's own "no paste edits" hint may appear and is accepted.
-- AC9. If conversion throws, or an image file cannot be created, an error message is shown and nothing is inserted — never partial output.
+- AC9. Failures are never silent.
+  - (a) If conversion throws, an error message is shown and nothing is inserted.
+  - (b) If an image file cannot be created (e.g. a read-only destination), the text is inserted — VS Code applies it regardless — and an error message names the images that were not saved and suggests undo. One undo reverts the paste.
 - AC10. "Markdown document" means language id `markdown` (notebook Markdown cells and MDX are excluded).
   - (a) The command's palette entry carries `when: editorLangId == markdown`.
   - (b) Invoking the command in any other editor leaves the document unchanged and creates no file. The command itself returns early when the active document's language id is not `markdown`, so this does not depend on VS Code's handling of an unmatched paste kind.
@@ -52,7 +54,7 @@ The acceptance criteria elaborate the requirements in places. These elaborations
 - No HTML on the clipboard falls back to a plain paste (AC8).
 - Cross-platform is verified by a 3-OS CI matrix in this slice (AC14).
 - If clipboard seeding for e2e proves infeasible on an OS, the owner is asked before any case becomes by-hand.
-- AC9's file-creation half stays as written for now. VS Code, not the extension, creates the files when it applies the edit, so the extension may be unable to catch that failure. The plan's spike records what VS Code actually does on a failed file creation (read-only destination); the owner then chooses between keeping one atomic edit with AC9 narrowed to conversion failures, or having the extension write files itself (error guaranteed, but undo no longer removes files). The plan is not finalized before that choice.
+- AC9(b): the spike showed VS Code inserts the text even when a file in the same edit cannot be created, and that one undo removes both text and files. The owner chose to keep one atomic edit and have the extension verify the files after the paste and report an error, over having the extension write files itself (which would lose undo for the files).
 
 ## Decisions
 
@@ -84,6 +86,7 @@ src/
     pasteProvider.ts      DataTransfer → core → DocumentPasteEdit (+ createFile edits)
     pasteCommand.ts       runs editor.action.pasteAs { kind }
     settings.ts           typed configuration reader
+    imageVerifier.ts      after the paste lands, checks the image files exist; reports the missing ones (AC9(b))
   core/                   pure TypeScript, no 'vscode' import
     convert.ts            convert(html, options) → { markdown, images[], dropped[] }   ← the seam
     html/                 cleanup of Word / Google Docs / Notion markup
@@ -115,7 +118,7 @@ Rejected: **turndown** — string/DOM-rule based, needs a DOM implementation in 
 - `tsconfig.json` sets `strict: true` (which includes `strictNullChecks`) plus `noUncheckedIndexedAccess`, `noImplicitOverride`, `noFallthroughCasesInSwitch` and `exactOptionalPropertyTypes`. Most of this extension's failure modes are "the value is not there" — no HTML flavor on the clipboard, no active editor, an untitled document with no folder, a missing `alt` — and these flags make the compiler force each of those branches to be handled. They are enabled from the first commit because turning them on later is a large migration.
 - `tsc --noEmit` (strict) for type checking; ESLint (typescript-eslint) for linting; Prettier for formatting.
 - TypeScript formatting (`.prettierrc.json`): `singleQuote: true`, `printWidth: 100`, `semi: true`, `trailingComma: "all"`, `arrowParens: "always"`. The last three are Prettier's defaults, written out so the style does not shift if a future Prettier major changes a default. Semicolons are kept: they avoid the ASI hazards on lines starting with `(`, `[` or a template literal, and match VS Code's own code and samples. Single quotes are the prevailing TypeScript convention; width 100 because `vscode.*` calls wrap awkwardly at 80. `eslint-config-prettier` turns off ESLint rules that overlap with Prettier.
-- `engines.vscode` is the first release where the document-paste API is stable (believed 1.97; confirmed when the plan is written).
+- `engines.vscode` is `^1.97.0`, the first release with the stable document-paste API.
 - Quality gates, recorded in `CLAUDE.md`: `pnpm lint && pnpm typecheck && pnpm test` (`pnpm lint` includes `prettier --check`).
 
 ## Testing
@@ -124,7 +127,7 @@ Test-first throughout. Three layers:
 
 **Core unit tests (vitest)** — `convert()` and `images.ts`. Golden fixtures are the long-term asset: each case is an `input.html` / `expected.md` pair (Chrome, Word, Google Docs, Notion captures plus hand-written minimal cases per AC3 construct). Every future bug report becomes a new pair. Covers AC3, AC4 (output and "no network" by construction — the core has no I/O), AC5 (decoding, naming, supported types), the absolute-path, `..` and empty-value cases of AC6, and the unsupported-type, undecodable and unsupported-source (`file:///`, `blob:`, `cid:`, relative) cases of AC7.
 
-**Adapter tests (vitest, faked `DataTransfer` and a stubbed `vscode` module)** — the provider's branching: trigger-kind guard, no HTML → plain-text edit, neither flavor → no edit, untitled document, `convert()` throwing → error message and no edit, warnings chosen. Covers the failure half of AC9, which no clipboard content can trigger because HTML parsing is error-tolerant. A manifest test asserts AC10(a) against `package.json`.
+**Adapter tests (vitest, faked `DataTransfer` and a stubbed `vscode` module)** — the provider's branching: trigger-kind guard, no HTML → plain-text edit, neither flavor → no edit, untitled document, `convert()` throwing → error message and no edit, warnings chosen. Covers AC9(a), which no clipboard content can trigger because HTML parsing is error-tolerant, and the AC9(b) verifier against a faked file system. A manifest test asserts AC10(a) against `package.json`.
 
 **E2e tests (`@vscode/test-cli`, run inside VS Code)** — assert user-observable behavior only: document text, files on disk, shown messages, and the effect of invoking commands. They do not inspect provider objects, internal calls or the core's return values. VS Code has no API to read notifications, so a spy on `vscode.window.showWarningMessage` / `showErrorMessage` is the accepted stand-in for "a message is shown". The real system clipboard is seeded by a test-only per-OS helper (`osascript` / `xclip` / PowerShell), since VS Code has no API to write HTML to the clipboard; the helper lives under `test/` and is never shipped. Clipboard tests run serially and overwrite the developer's clipboard.
 
@@ -138,25 +141,28 @@ Test-first throughout. Three layers:
 | AC6 destination setting | ✓ | ✓ | ✓ |
 | AC7 untitled doc / unsupported type / unsupported source | ✓ | ✓ | ✓ |
 | AC8 no HTML → plain paste | | ✓ | ✓ |
-| AC9 failure → error, nothing inserted | | ✓ (conversion throws) | file-creation half: decided after the spike |
+| AC9 failures are never silent | | ✓ (a), (b) | ✓ (b), read-only folder, macOS / Linux only |
 | AC10 Markdown documents only | | ✓ (manifest) | ✓ |
 | AC11 raw image clipboard untouched | | | ✓ |
 | AC12 link separators and encoding | ✓ | | |
 | AC13 Word / Google Docs / Notion artifacts | ✓ | | |
 | AC14 formatting + suite green on 3 OSes | | | CI matrix |
 
-The first task of the plan is a spike that proves clipboard seeding (HTML, HTML + plain, HTML + image, image only) on each OS and settles the "To verify" facts below, including the outcome of a failed file creation (AC9). If seeding proves infeasible anywhere, the owner is asked before any e2e case is downgraded to a by-hand case.
+Clipboard seeding was proven on macOS by a spike (see below). The plan proves it on Linux and Windows when it adds the CI matrix; if seeding proves infeasible there, the owner is asked before any e2e case is downgraded to a by-hand case. E2e tests wait for outcomes by polling, because `editor.action.pasteAs` resolves before the edit is applied.
 
-## To verify while planning
+## Verified facts
 
-These are implementation facts, not requirements. If any turns out false in a way that touches a requirement or acceptance criterion, the owner is asked before anything changes.
+Checked on 2026-09-20 against the `@types/vscode` typings and by a throwaway spike on macOS with VS Code 1.138.
 
-- The exact VS Code version where `DocumentPasteEditProvider` became stable.
-- `editor.action.pasteAs` accepts a `kind` argument that selects our provider without showing a picker.
-- Whether one undo also removes files created through `additionalEdit`.
-- `editor.action.pasteAs` with a `kind` that yields no edit does not fall through to the default paste (AC8, AC11).
-- `context.triggerKind` distinguishes `PasteAs` from `Automatic` as D1 assumes.
-- Whether a failed `additionalEdit` file creation also cancels the text insert (AC9).
+- The document-paste API is absent from the 1.96 typings and present in 1.97: `engines.vscode` is `^1.97.0`.
+- `editor.action.pasteAs` with `{ kind }` applies our edit without a picker; the provider receives `triggerKind: PasteAs` and `only` set to our kind.
+- A normal paste reaches the provider with `triggerKind: Automatic`; returning nothing leaves the paste untouched for HTML + plain text, HTML only (nothing is inserted at all — there is no plain text) and HTML + image (the built-in image paste runs).
+- `pasteAs` with a kind that yields no edit inserts nothing and does not fall through to the default paste (image-only clipboard; non-Markdown document).
+- With multiple cursors the edit is inserted at each; the plain-text fallback inserts the full text at each.
+- One undo removes both the inserted text and a file created through `additionalEdit`.
+- A failed file creation does not cancel the text insert (AC9(b)).
+- `editor.action.pasteAs` resolves before the edit is applied, and the document change event fires before the file exists. The AC9(b) verifier therefore waits for the document change and then polls for the files.
+- `osascript` seeds all four clipboard shapes (HTML, HTML + plain text, HTML + image, image only).
 
 ## Documentation produced by the plan
 
