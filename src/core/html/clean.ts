@@ -69,9 +69,12 @@ export function clean(tree: Root): void {
       return [SKIP, index];
     }
     if (node.type !== 'element') return undefined;
-    // Word's <o:p> and its smart tags: the wrapper goes, the text it wraps stays
+    // Word's <o:p> and its smart tags: the wrapper goes, the text it wraps stays —
+    // except for a namespaced script or style, whose content is not text to keep
     if (node.tagName.includes(':')) {
-      parent.children.splice(index, 1, ...node.children);
+      const localName = node.tagName.slice(node.tagName.lastIndexOf(':') + 1);
+      const dropped = localName === 'script' || localName === 'style';
+      parent.children.splice(index, 1, ...(dropped ? [] : node.children));
       return [SKIP, index];
     }
     const style = styleOf(node);

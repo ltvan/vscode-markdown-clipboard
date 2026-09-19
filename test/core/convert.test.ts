@@ -84,6 +84,11 @@ describe('convert: lists', () => {
     expect(result.markdown).toBe('- a\n\n  b\n\n- c');
   });
 
+  it('drops a namespaced script with its content, keeping the surrounding text', async () => {
+    const result = await convert('<p>a<v:script>alert(1)</v:script>b</p>', save);
+    expect(result.markdown).toBe('ab');
+  });
+
   it('keeps an item holding only a nested list tight', async () => {
     const result = await convert('<ul><li><ul><li>x</li><li>y</li></ul></li><li>z</li></ul>', save);
     expect(result.markdown).toBe('- - x\n  - y\n- z');

@@ -48,6 +48,9 @@ function buildLists(items: ListItem[]): Element[] {
   for (const item of items) {
     while (stack.length > 1 && (stack.at(-1)?.level ?? 0) > item.level) stack.pop();
     let frame = stack.at(-1)!;
+    // only the outermost frame survives the pop above while still being too deep: it
+    // adopted a list that started below level 1, so its level follows the shallower item
+    if (frame.level > item.level) frame.level = item.level;
     if (frame.level < item.level || !frame.list) {
       const list = element(item.ordered ? 'ol' : 'ul', []);
       if (frame.lastItem) frame.lastItem.children.push(list);
