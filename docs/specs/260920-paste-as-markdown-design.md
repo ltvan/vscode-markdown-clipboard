@@ -26,9 +26,9 @@ Each criterion is user-observable and maps to at least one test (see [Testing](#
 
 - AC1. In a Markdown editor, with HTML on the clipboard, running `Markdown Clipboard: Paste as Markdown` (`markdownClipboard.pasteAsMarkdown`) inserts the converted Markdown at the cursor, replacing any selection. With multiple cursors it inserts at each.
 - AC2. A normal paste (`editor.action.clipboardPasteAction`, Ctrl/Cmd+V) is never converted. For each of three clipboard shapes — HTML only, HTML + plain text, HTML + image — the document after a normal paste does not contain the converted form of the fixture's sentinel (the HTML carries `<b>SENTINEL</b>`; the document must not contain `**SENTINEL**`) — for HTML only and HTML + image that is the entire assertion, since the built-in paste may legitimately act there; for HTML + plain text the document additionally contains exactly the seeded plain-text flavor (fixtures are chosen so the built-in Markdown paste does not transform them). The extension ships no default keybinding.
-- AC3. Conversion covers: headings, paragraphs, bold, italic, strikethrough, links, ordered / unordered / nested lists, task lists, blockquotes, inline code, fenced code blocks, GFM tables, horizontal rules and line breaks. Hard line breaks are written as a trailing backslash. `<script>`, `<style>` and comments produce no output. Raw HTML is never passed through: an element with no Markdown equivalent (`<u>`, `<sub>`, `<details>`, merged-cell or nested tables) is reduced to its text content.
+- AC3. Conversion covers: headings, paragraphs, bold, italic, strikethrough, links, ordered / unordered / nested lists, task lists, blockquotes, inline code, fenced code blocks, GFM tables, horizontal rules and line breaks. Hard line breaks are written as a trailing backslash. `<script>`, `<style>` and comments produce no output. A link whose target uses the `javascript:`, `vbscript:` or `data:` scheme keeps its text and loses the link. Raw HTML is never passed through: an element with no Markdown equivalent (`<u>`, `<sub>`, `<details>`, merged-cell or nested tables) is reduced to its text content.
 - AC4. `<img src="https://…" alt="x">` becomes `![x](https://…)`; a missing `alt` gives `![](…)`. No network request is made.
-- AC5. `<img src="data:image/png;base64,…">` creates a file under the image destination and inserts `![alt](<relative path>)`. Supported types: PNG, JPEG, GIF, WebP, SVG. The file name is `image-<first 8 hex of SHA-256 of the bytes>.<ext>`, so pasting the same image twice reuses one file. Both base64 and percent-encoded `data:` URIs are decoded; an undecodable one is dropped as in AC7.
+- AC5. `<img src="data:image/png;base64,…">` creates a file under the image destination and inserts `![alt](<relative path>)`. Supported types: PNG, JPEG, GIF, WebP, SVG. The file name is `image-<first 16 hex of SHA-256 of the bytes>.<ext>`, so pasting the same image twice reuses one file; within one paste, images are deduplicated by content, not by name. An embedded SVG is saved only if it is clean — it contains no `<script>`, no `on*=` event handler, no `<foreignObject>` and no external reference (`href` / `url()` not starting with `#`, `@import`); otherwise it is dropped as in AC7. Both base64 and percent-encoded `data:` URIs are decoded; an undecodable one is dropped as in AC7.
 - AC6. The image destination is the resource-scoped setting `markdownClipboard.imageDestination`, default `assets`.
   - A plain path is relative to the document's folder. `..` segments are allowed; an empty value means the document's own folder.
   - Variables: the value may start with `${workspaceFolder}` (the workspace folder that contains the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. This lets images live under the documentation root, e.g. `${workspaceFolder}/assets`.
@@ -37,7 +37,7 @@ Each criterion is user-observable and maps to at least one test (see [Testing](#
 - AC7. In an untitled document (no folder), embedded images are dropped and a warning says so; the rest of the content is pasted. The same applies — image dropped, one warning summarizing what was dropped, rest pasted — to an embedded image of an unsupported type and to an `<img>` whose `src` is neither `http(s)` nor `data:` (Word's `file:///` temp paths, `blob:`, `cid:`, relative URLs).
 - AC8. With no HTML on the clipboard, the command falls back to a plain paste: it inserts the clipboard's plain-text flavor unchanged, in full at each cursor (unlike the built-in paste, it does not spread lines across multiple cursors). With neither HTML nor plain text it inserts nothing; VS Code's own "no paste edits" hint may appear and is accepted.
 - AC9. Failures are never silent.
-  - (a) If conversion throws, an error message is shown and nothing is inserted.
+  - (a) If conversion throws, the clipboard cannot be read, or the conversion worker dies (for example by exceeding its memory ceiling), an error message is shown and nothing is inserted. Cancelling the paste stops the conversion and inserts nothing.
   - (b) If an image file cannot be created (e.g. a read-only destination), the text is inserted — VS Code applies it regardless — and an error message names the images that were not saved and suggests undo. One undo reverts the paste.
 - AC10. "Markdown document" means language id `markdown` (notebook Markdown cells and MDX are excluded).
   - (a) The command's palette entry carries `when: editorLangId == markdown`.
@@ -54,7 +54,13 @@ The acceptance criteria elaborate the requirements in places. These elaborations
 - Replace the selection, insert at every cursor, no default keybinding (AC1, AC2).
 - Setting `markdownClipboard.imageDestination`, default `assets`; `image-<hash8>` naming (AC5, AC6).
 - Added after acceptance, at the owner's request: the destination supports `${workspaceFolder}`, `${documentDirName}` and `${documentBaseName}` so images can live under the documentation root; links stay relative to the document rather than root-absolute, so they work in every renderer. Full parity with VS Code's `markdown.copyFiles.destination` variables was declined as too large (AC6).
-- Embedded-image allow-list PNG, JPEG, GIF, WebP, SVG. SVG is saved verbatim: Markdown preview does not execute scripts in images (AC5).
+- Embedded-image allow-list PNG, JPEG, GIF, WebP, SVG (AC5).
+- After the security review of 2026-09-20 (clipboard HTML is untrusted input):
+  - File names use 16 hex digits, not 8, and one paste deduplicates by content — an 8-digit name collides in under a second, silently losing an image or pointing the document at an existing file.
+  - SVG is no longer saved verbatim: only SVGs passing a conservative cleanliness check are saved. A saved SVG ends up in the repository and may later be served from the project's own origin, where its scripts would run. A sanitizer was declined — a wrong one gives false safety, while a false positive here only drops an image.
+  - Links with `javascript:`, `vbscript:` or `data:` targets keep only their text; other renderers than VS Code's preview may not block them.
+  - Conversion runs in a background worker thread rather than under size limits: VS Code stays responsive, cancelling the paste terminates the worker, and the worker's memory ceiling turns a pathological clipboard into the AC9(a) error instead of an exhausted extension host.
+  - The manifest declares that an untrusted workspace cannot set `markdownClipboard.imageDestination` (`capabilities.untrustedWorkspaces`), instead of relying on VS Code's default.
 - Untitled documents, unsupported types and non-`http(s)`/`data:` sources drop the image with a warning (AC7).
 - No HTML on the clipboard falls back to a plain paste (AC8).
 - Cross-platform is verified by a 3-OS CI matrix in this slice (AC14).
@@ -73,7 +79,7 @@ The acceptance criteria elaborate the requirements in places. These elaborations
 - Secondary guard: the edit sets `yieldTo: [DocumentDropOrPasteEditKind.Text]`.
 - Known and accepted: the option also appears in VS Code's "Paste As…" picker and paste widget. It cannot be hidden and is never applied unless chosen.
 - Embedded images are written through the edit's `additionalEdit` (`WorkspaceEdit.createFile` with contents), so text and files land as one edit.
-- Works on desktop and Remote/WSL; no process spawning. Web-compatible by design (no Node-only API in `src/`), but a web bundle is not packaged or verified in this slice.
+- Works on desktop and Remote/WSL; no process spawning. `convert()` runs in a Node worker thread (`src/vscode/backgroundConvert.ts` + a second bundle, `dist/convertWorker.js`), with in-process conversion as the fallback where worker threads do not exist. The core stays web-compatible (no Node-only API in `src/core/`); a web bundle is not packaged or verified in this slice.
 
 Rejected:
 
