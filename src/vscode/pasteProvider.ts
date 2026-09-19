@@ -1,10 +1,17 @@
 import * as vscode from 'vscode';
-import { convert } from '../core/convert';
 import { summarizeDropped } from '../core/dropped';
 import { imageTargetSegments } from '../core/paths';
 import type { ImageVerifier } from './imageVerifier';
 import type { DestinationFailure } from '../core/paths';
+import type { ConvertOptions, ConvertResult } from '../core/types';
 import { DEFAULT_IMAGE_DESTINATION, readSettings, type Settings } from './settings';
+
+/** Converts the clipboard's HTML, or yields nothing when the paste was cancelled. */
+export type Converter = (
+  html: string,
+  options: ConvertOptions,
+  token: vscode.CancellationToken,
+) => Promise<ConvertResult | undefined>;
 
 export const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Empty.append('markdown', 'fromHtml');
 
@@ -30,7 +37,10 @@ export class MarkdownPasteEdit extends vscode.DocumentPasteEdit {
 }
 
 export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider<MarkdownPasteEdit> {
-  constructor(private readonly verifier: ImageVerifier) {}
+  constructor(
+    private readonly verifier: ImageVerifier,
+    private readonly convert: Converter,
+  ) {}
 
   /**
    * Side-effect free: VS Code also calls this to fill the "Paste As…" picker, where
@@ -41,7 +51,7 @@ export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider
     _ranges: readonly vscode.Range[],
     dataTransfer: vscode.DataTransfer,
     context: vscode.DocumentPasteEditContext,
-    _token: vscode.CancellationToken,
+    token: vscode.CancellationToken,
   ): Promise<MarkdownPasteEdit[] | undefined> {
     // a normal paste must never be altered, whatever is on the clipboard
     if (context.triggerKind !== vscode.DocumentPasteTriggerKind.PasteAs) return undefined;
@@ -58,10 +68,12 @@ export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider
         ? readSettings(document)
         : { imageDestination: DEFAULT_IMAGE_DESTINATION };
 
-      const result = await convert(html, {
-        imageDestination: settings.imageDestination,
-        canSaveImages,
-      });
+      const result = await this.convert(
+        html,
+        { imageDestination: settings.imageDestination, canSaveImages },
+        token,
+      );
+      if (!result) return undefined; // cancelled: nothing is inserted and nothing is said
 
       const edit = this.edit(result.markdown);
       if (settings.rejected) {

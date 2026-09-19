@@ -31,4 +31,13 @@ describe('manifest', () => {
   it('requires the first VS Code release with the stable paste API', () => {
     expect(manifest.engines.vscode).toBe('^1.97.0');
   });
+
+  it('ignores the image destination in an untrusted workspace', () => {
+    expect(manifest.capabilities.untrustedWorkspaces).toEqual({
+      supported: 'limited',
+      description:
+        'In an untrusted workspace the image destination setting is ignored and the default is used.',
+      restrictedConfigurations: ['markdownClipboard.imageDestination'],
+    });
+  });
 });

@@ -181,6 +181,22 @@ suite('Paste as Markdown', () => {
     assert.deepStrictEqual(fs.readdirSync(path.join(workspaceRoot(), 'ac10')), ['note.txt']);
   });
 
+  test('AC9(a): converts a clipboard far larger than a hand-written paste', async function () {
+    this.timeout(60_000);
+    const paragraphs = 40_000;
+    const editor = await openFile('big/doc.md', '', [cursor(0, 0)]);
+    seedClipboard({ html: '<p>x</p>'.repeat(paragraphs), text: 'x' });
+    await run();
+    // one "x" line per paragraph, separated by a blank line
+    await waitFor(
+      () => editor.document.lineCount === paragraphs * 2 - 1,
+      'the whole payload',
+      40_000,
+    );
+    assert.strictEqual(editor.document.getText().length, paragraphs * 3 - 2);
+    assert.deepStrictEqual(messages.errors, []);
+  });
+
   test('AC11: with only a raw image on the clipboard, inserts nothing and creates no file', async () => {
     const editor = await openFile('ac11/doc.md', 'A\n', [cursor(0, 1)]);
     seedClipboard({ png: PNG });

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { testing, Uri as StubUri, type WorkspaceEdit } from './vscodeStub';
 import { PNG_BASE64 } from '../core/png';
+import { convert as inProcessConvert } from '../../src/core/convert';
 import { ImageVerifier } from '../../src/vscode/imageVerifier';
 import {
   type MarkdownPasteEdit,
@@ -10,12 +11,8 @@ import {
   PasteAsMarkdownProvider,
 } from '../../src/vscode/pasteProvider';
 
-const convert = vi.hoisted(() => vi.fn());
-vi.mock('../../src/core/convert', async (original) => {
-  const actual = await original<typeof import('../../src/core/convert')>();
-  convert.mockImplementation(actual.convert);
-  return { convert };
-});
+/** The provider is given a converter; the tests run the real one, in process. */
+const convert = vi.fn(inProcessConvert);
 
 function transfer(flavors: Record<string, string>): vscode.DataTransfer {
   return {
@@ -63,7 +60,7 @@ describe('PasteAsMarkdownProvider', () => {
     testing.reset();
     verifier = new ImageVerifier();
     vi.spyOn(verifier, 'expect');
-    provider = new PasteAsMarkdownProvider(verifier);
+    provider = new PasteAsMarkdownProvider(verifier, (html, options) => convert(html, options));
   });
 
   it('declares its kind and reads html and plain text', () => {
