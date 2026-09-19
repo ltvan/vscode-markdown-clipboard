@@ -2935,6 +2935,20 @@ git commit -m "docs: add readme and extension design spec"
 
 ---
 
+## Changes during execution
+
+The tasks above are the plan as accepted. A code and security review after Task 6 (clipboard HTML is untrusted input) changed the following; the code and `docs/design-specs/extension.md` are authoritative where they differ from the task text.
+
+- **Image names** use 16 hex digits of the hash, not 8, and one paste deduplicates images by content (`name-collision` drop reason).
+- **SVG** is saved only when `src/core/svg.ts` `isCleanSvg()` accepts it: strict UTF-8, starts as `<svg`, every tag from a fixed allow-list, no `<!` at all, no event handlers, only `#…` references (`unsafe-svg` drop reason). A block-list was tried first and bypassed three ways.
+- **Unsafe link schemes** (`javascript:`, `vbscript:`, `data:`) are removed on the Markdown tree by `src/core/safeLinks.ts`, because `<iframe>`, `<video>` and `<audio>` also become links; `<base>` is dropped so links are never rebased.
+- **Percent-encoded binary images** are decoded byte-wise; **destination variables** are sanitized (`${documentBaseName}` cannot add path structure; control characters are rejected as `invalid-character`).
+- **Word and Google Docs cleanup**: namespaced elements are unwrapped rather than deleted (their text is kept; `*:script` / `*:style` are removed), comments between Word list paragraphs no longer split a list, a list may start on a sub-level, leading and repeated Google Docs sibling lists are handled, only a first-row `<th>` counts as a table header, an item holding only a nested list stays tight.
+- **Side effects happen when the edit lands.** `src/vscode/imageVerifier.ts` became `src/vscode/pasteLanding.ts` (`PasteLandingWatcher`): it shows the warnings and then verifies the image files once the pasted text appears in the document. `provideDocumentPasteEdits` has no UI side effects, so merely opening **Paste As…** shows nothing. VS Code never calls `resolveDocumentPasteEdit` on the `editor.action.pasteAs` path, so that hook is not used.
+- **Conversion runs in a worker thread** (`src/vscode/backgroundConvert.ts`, `src/vscode/convertWorker.ts`, second bundle `dist/convertWorker.js`) with a 512 MB memory ceiling; cancelling the paste terminates the worker; in-process conversion is the fallback where worker threads do not exist. The provider takes the converter as a constructor parameter.
+- **Manifest**: `capabilities.untrustedWorkspaces` restricts `markdownClipboard.imageDestination`.
+- **E2e tests need the VS Code test window to have keyboard focus**: `editor.action.pasteAs` does nothing otherwise. Run them on an idle machine or under a virtual display.
+
 ## Acceptance criteria coverage
 
 | Criterion | Task(s) |
