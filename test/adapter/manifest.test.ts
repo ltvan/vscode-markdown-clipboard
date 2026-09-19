@@ -36,7 +36,7 @@ describe('manifest', () => {
     expect(manifest.capabilities.untrustedWorkspaces).toEqual({
       supported: 'limited',
       description:
-        'In an untrusted workspace the image destination setting is ignored and the default is used.',
+        "In an untrusted workspace the workspace's image destination setting is ignored.",
       restrictedConfigurations: ['markdownClipboard.imageDestination'],
     });
   });

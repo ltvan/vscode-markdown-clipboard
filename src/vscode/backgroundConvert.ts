@@ -7,6 +7,11 @@ import type { ConvertOptions, ConvertResult } from '../core/types';
 type WorkerAnswer = { ok: true; result: ConvertResult } | { ok: false; message: string };
 
 const TOO_LARGE = 'the clipboard content is too large to convert';
+const STOPPED = 'the conversion worker stopped unexpectedly';
+
+/** Node reports the memory ceiling as an `error` event, and only then exits. */
+const isOutOfMemory = (error: unknown): boolean =>
+  error instanceof Error && 'code' in error && error.code === 'ERR_WORKER_OUT_OF_MEMORY';
 
 /**
  * Converts off the extension host, so VS Code stays responsive, cancelling the paste
@@ -18,15 +23,15 @@ export async function convertInBackground(
   options: ConvertOptions,
   token: vscode.CancellationToken,
 ): Promise<ConvertResult | undefined> {
-  let Worker;
+  let threads: typeof import('node:worker_threads');
   try {
-    ({ Worker } = await import('node:worker_threads'));
+    threads = await import('node:worker_threads');
   } catch {
     return convert(html, options); // a host without worker threads, such as the web
   }
 
   // esbuild writes the worker next to the extension bundle
-  const worker = new Worker(path.join(__dirname, 'convertWorker.js'), {
+  const worker = new threads.Worker(path.join(__dirname, 'convertWorker.js'), {
     resourceLimits: { maxOldGenerationSizeMb: 512 },
   });
   let cancellation: vscode.Disposable | undefined;
@@ -41,12 +46,10 @@ export async function convertInBackground(
         if (answer.ok) resolve(answer.result);
         else reject(new Error(answer.message));
       });
-      worker.on('error', reject);
-      // the worker died before answering, for instance on its memory ceiling
-      worker.on('exit', (code) => {
-        if (code === 0) resolve(undefined);
-        else reject(new Error(TOO_LARGE));
-      });
+      worker.on('error', (error) => reject(isOutOfMemory(error) ? new Error(TOO_LARGE) : error));
+      // reached only when the worker stopped without answering: a cancelled paste has
+      // already resolved by now, and so has a successful one
+      worker.on('exit', () => reject(new Error(STOPPED)));
       worker.postMessage({ html, options });
     });
   } finally {

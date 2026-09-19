@@ -81,10 +81,23 @@ describe('convertInBackground', () => {
     await expect(pending).rejects.toThrow('worker died');
   });
 
-  it('blames the payload when the worker exits before answering', async () => {
+  it('blames the payload only when the worker ran out of memory', async () => {
     const { pending, worker } = await start(cancellation().token);
+    const outOfMemory = Object.assign(new Error('JS heap out of memory'), {
+      code: 'ERR_WORKER_OUT_OF_MEMORY',
+    });
+    worker.emit('error', outOfMemory);
     worker.emit('exit', 1);
     await expect(pending).rejects.toThrow('the clipboard content is too large to convert');
+  });
+
+  it.each([
+    ['a clean exit', 0],
+    ['any other non-zero exit', 7],
+  ])('reports %s without a result', async (_name, code) => {
+    const { pending, worker } = await start(cancellation().token);
+    worker.emit('exit', code);
+    await expect(pending).rejects.toThrow('the conversion worker stopped unexpectedly');
   });
 
   it('terminates the worker and yields nothing when the paste is cancelled', async () => {
