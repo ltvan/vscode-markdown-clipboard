@@ -37,6 +37,7 @@ Status: accepted (2026-09-20)
 | `src/core/types.ts` | `ConvertOptions`, `ConvertResult`, `ConvertedImage`, `DroppedImage`, `DropReason` |
 | `src/core/paths.ts` | Destination variables, absolute-destination predicate, target segments, Markdown link |
 | `src/core/images.ts` | `data:` URI decoding, MIME → extension, content-hash file name |
+| `src/core/html/style.ts` | `styleOf()`: an element's inline style, normalized for matching |
 | `src/core/html/wordLists.ts` | Rebuild Word's list paragraphs (`mso-list`) into real `<ul>` / `<ol>` |
 | `src/core/html/clean.ts` | Remove comments and namespaced (Word) elements, unwrap Google Docs wrapper, map styled spans |
 | `src/core/html/images.ts` | Rewrite or drop `<img>` elements, collect images and dropped reasons |
@@ -1148,11 +1149,27 @@ describe('summarizeDropped', () => {
 
 Run: `pnpm test:unit` — Expected: FAIL, modules not found.
 
-- [ ] **Step 6: Implement `src/core/html/wordLists.ts`**
+- [ ] **Step 6: Implement `src/core/html/style.ts` and `src/core/html/wordLists.ts`**
+
+`src/core/html/style.ts` — shared by both HTML cleanups:
+
+```ts
+import type { Element } from 'hast';
+
+/** The element's inline style, lower-cased and without whitespace, ready for regex tests. */
+export function styleOf(node: Element): string {
+  return String(node.properties['style'] ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+}
+```
+
+`src/core/html/wordLists.ts`:
 
 ```ts
 import type { Element, ElementContent, Nodes, Root } from 'hast';
 import { visit } from 'unist-util-visit';
+import { styleOf } from './style';
 
 interface ListItem {
   level: number;
@@ -1165,11 +1182,6 @@ interface Frame {
   list: Element | undefined;
   lastItem: Element | undefined;
 }
-
-const styleOf = (node: Element): string =>
-  String(node.properties['style'] ?? '')
-    .toLowerCase()
-    .replace(/\s+/g, '');
 
 const textOf = (node: Nodes): string =>
   node.type === 'text' ? node.value : 'children' in node ? node.children.map(textOf).join('') : '';
@@ -1256,12 +1268,7 @@ export function rebuildWordLists(tree: Root): void {
 ```ts
 import type { Element, ElementContent, Root } from 'hast';
 import { SKIP, visit } from 'unist-util-visit';
-
-function styleOf(node: Element): string {
-  return String(node.properties['style'] ?? '')
-    .toLowerCase()
-    .replace(/\s+/g, '');
-}
+import { styleOf } from './style';
 
 /** Google Docs expresses emphasis as styled spans; one span can carry several. */
 function tagsForStyle(style: string): string[] {
