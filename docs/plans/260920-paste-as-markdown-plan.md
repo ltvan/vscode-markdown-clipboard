@@ -40,6 +40,7 @@ Status: draft (2026-09-20)
 | `src/core/html/clean.ts` | Remove comments and namespaced (Word) elements, unwrap Google Docs wrapper, map styled spans |
 | `src/core/html/images.ts` | Rewrite or drop `<img>` elements, collect images and dropped reasons |
 | `src/core/convert.ts` | The seam: `convert(html, options)` |
+| `src/core/tightLists.ts` | Markdown-tree fix: nested lists stay tight |
 | `src/core/dropped.ts` | `summarizeDropped()` — the one AC7 warning text |
 | `src/vscode/settings.ts` | Read and validate `imageDestination` |
 | `src/vscode/pasteProvider.ts` | The paste edit provider |
@@ -62,9 +63,11 @@ Status: draft (2026-09-20)
 
 **Interfaces:**
 
-- Produces: scripts `build`, `typecheck`, `lint`, `format`, `test:unit`, `test:e2e`, `test`, `package`; the manifest values in Global constraints.
+- Produces: scripts `build`, `typecheck`, `lint`, `format`, `test:unit`, `test`, `package` (`test:e2e` arrives in Task 5); the manifest values in Global constraints.
 
-- [ ] **Step 1: Write `package.json`**
+- [ ] **Step 1: Write `package.json` — without the `contributes` block for now**
+
+Step 8 adds `contributes` after its test has been seen failing. Everything else below goes in now.
 
 ```json
 {
@@ -129,7 +132,7 @@ allowBuilds:
 
 ```bash
 pnpm add unified rehype-parse rehype-remark remark-gfm remark-stringify unist-util-visit
-pnpm add -D typescript@~6.0 @types/node@^22 @types/vscode@~1.97.0 @types/hast @types/mocha \
+pnpm add -D typescript@~6.0 @types/node@^22 @types/vscode@~1.97.0 @types/hast @types/mdast @types/mocha \
   esbuild vitest eslint typescript-eslint eslint-config-prettier prettier \
   @vscode/test-cli @vscode/test-electron @vscode/vsce
 ```
@@ -263,7 +266,7 @@ import type * as vscode from 'vscode';
 export function activate(_context: vscode.ExtensionContext): void {}
 ```
 
-- [ ] **Step 8: The manifest test (AC10(a), no default keybinding) — write this first**
+- [ ] **Step 8: The manifest test (AC10(a), no default keybinding), then the `contributes` block**
 
 `test/adapter/manifest.test.ts`:
 
@@ -304,9 +307,9 @@ describe('manifest', () => {
 });
 ```
 
-Order of work: after Step 2 (dependencies) and Step 6 (vitest config), write this test and Step 9's stub while `package.json` still has no `contributes` block, run `pnpm test:unit`, and see it fail with `Cannot read properties of undefined (reading 'commands')`. Then add the `contributes` block from Step 1 and see it pass.
+Write this test and Step 9's stub now, run `pnpm test:unit`, and see it fail with `Cannot read properties of undefined (reading 'commands')`. Then add the `contributes` block shown in Step 1 to `package.json` and see it pass.
 
-- [ ] **Step 9: Create the stub file the alias points at**
+- [ ] **Step 9: The stub file the vitest alias points at (needed by Step 8's run)**
 
 `test/adapter/vscodeStub.ts` (Task 6 fills it):
 
@@ -576,7 +579,7 @@ This task needs real clipboard captures from the owner (Step 3). Ask for them wh
 
 **Files:**
 
-- Create: `src/core/types.ts`, `src/core/html/wordLists.ts`, `src/core/html/clean.ts`, `src/core/html/images.ts`, `src/core/convert.ts`, `src/core/dropped.ts`
+- Create: `src/core/types.ts`, `src/core/tightLists.ts`, `src/core/html/wordLists.ts`, `src/core/html/clean.ts`, `src/core/html/images.ts`, `src/core/convert.ts`, `src/core/dropped.ts`
 - Test: `test/core/convert.test.ts`, `test/core/golden.test.ts`, `test/core/dropped.test.ts`, `test/core/fixtures/<case>/{input.html,expected.md}`
 
 **Interfaces:**
@@ -620,7 +623,7 @@ Each fixture is a folder under `test/core/fixtures/` with `input.html` and `expe
 
 <!-- prettier-ignore -->
 ```html
-<h1>Title</h1><h2>Sub</h2><p>a <b>bold</b> <i>italic</i> <del>gone</del> <a href="https://example.com/">link</a> <code>code</code></p><hr><blockquote><p>quote</p></blockquote><ul><li>a<ul><li>nested</li></ul></li><li>b</li></ul><ol><li>one</li><li>two</li></ol><ul><li><input type="checkbox" checked> done</li><li><input type="checkbox"> todo</li></ul><pre><code class="language-ts">const a = 1;
+<h1>Title</h1><h2>Sub</h2><p>a <b>bold</b> <i>italic</i> <del>gone</del> <a href="https://example.com/">link</a> <code>code</code></p><hr><blockquote><p>quote</p></blockquote><ul><li>a<ul><li>nested</li><li>second</li></ul></li><li>b</li></ul><ol><li>one</li><li>two</li></ol><ul><li><input type="checkbox" checked> done</li><li><input type="checkbox"> todo</li></ul><pre><code class="language-ts">const a = 1;
 </code></pre><table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table><p>one<br>two</p>
 ```
 
@@ -640,6 +643,7 @@ a **bold** _italic_ ~~gone~~ [link](https://example.com/) `code`
 
 - a
   - nested
+  - second
 - b
 
 1. one
@@ -696,6 +700,23 @@ body
 **bold** plain _it_ **_both_**
 ```
 
+`google-docs-list/input.html` (Google Docs puts a nested list next to its parent item, not inside it):
+
+<!-- prettier-ignore -->
+```html
+<ul><li dir="ltr" aria-level="1"><p dir="ltr" role="presentation"><span>Parser</span></p></li><ul><li dir="ltr" aria-level="2"><p dir="ltr" role="presentation"><span>Faster</span></p></li><li dir="ltr" aria-level="2"><p dir="ltr" role="presentation"><span>Smaller</span></p></li></ul><li dir="ltr" aria-level="1"><p dir="ltr" role="presentation"><span>Editor</span></p></li></ul>
+```
+
+`google-docs-list/expected.md`:
+
+<!-- prettier-ignore -->
+```markdown
+- Parser
+  - Faster
+  - Smaller
+- Editor
+```
+
 `nested-table/input.html`:
 
 <!-- prettier-ignore -->
@@ -738,6 +759,8 @@ body
 
 <p class=MsoListParagraphCxSpMiddle style='text-indent:-.25in;mso-list:l0 level2 lfo1'><![if !supportLists]><span style='font-family:"Courier New";mso-list:Ignore'>o<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp; </span></span><![endif]>Nested <b>bold</b><o:p></o:p></p>
 
+<p class=MsoListParagraphCxSpMiddle style='text-indent:-.25in;mso-list:l0 level2 lfo1'><![if !supportLists]><span style='font-family:"Courier New";mso-list:Ignore'>o<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp; </span></span><![endif]>Nested two<o:p></o:p></p>
+
 <p class=MsoListParagraphCxSpLast style='text-indent:-.25in;mso-list:l0 level1 lfo1'><![if !supportLists]><span style='font-family:Symbol;mso-list:Ignore'>·<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp; </span></span><![endif]>Item two<o:p></o:p></p>
 
 <p class=MsoNormal>Between<o:p></o:p></p>
@@ -757,6 +780,7 @@ Intro
 
 - Item one
   - Nested **bold**
+  - Nested two
 - Item two
 
 Between
@@ -856,7 +880,9 @@ This is **bold**, _italic_ and a [link](https://example.com/).
 | beta  | 2     |
 ```
 
-The real fixtures may fail after Steps 6–9 in ways the synthetic ones do not. Every such difference is a cleanup rule to add to `clean.ts` or `wordLists.ts`, test-first (the failing real fixture is the test). If a difference cannot be fixed without changing an acceptance criterion, stop and ask the owner.
+Before committing the captures, search them for `file:///`, user names, e-mail addresses and document ids (Word writes local paths into `<link rel=File-List href="file:///…">` and its metadata; Google Docs writes a `docs-internal-guid`). Redact those values in place — head metadata does not affect the expected output — and show the owner the result: the repository is pushed to GitHub.
+
+The real fixtures may fail after Steps 6–9 in ways the synthetic ones do not. Every such difference is either a cleanup rule on the HTML tree (`src/core/html/`) or a fix on the Markdown tree (next to `src/core/tightLists.ts`), added test-first (the failing real fixture is the test). If a difference cannot be fixed without changing an acceptance criterion, stop and ask the owner.
 
 - [ ] **Step 3b: Write the failing golden test**
 
@@ -1102,7 +1128,7 @@ export function rebuildWordLists(tree: Root): void {
 - [ ] **Step 6b: Implement `src/core/html/clean.ts`**
 
 ```ts
-import type { Element, Root } from 'hast';
+import type { Element, ElementContent, Root } from 'hast';
 import { SKIP, visit } from 'unist-util-visit';
 
 function styleOf(node: Element): string {
@@ -1118,6 +1144,23 @@ function tagsForStyle(style: string): string[] {
   if (/font-style:italic/.test(style)) tags.push('em');
   if (/text-decoration[^;]*line-through/.test(style)) tags.push('del');
   return tags;
+}
+
+const isList = (node: ElementContent): node is Element =>
+  node.type === 'element' && (node.tagName === 'ul' || node.tagName === 'ol');
+
+/** Google Docs puts a nested list next to its parent item, not inside it. */
+function adoptSiblingLists(list: Element): void {
+  const children: ElementContent[] = [];
+  let lastItem: Element | undefined;
+  for (const child of list.children) {
+    if (isList(child) && lastItem) lastItem.children.push(child);
+    else {
+      children.push(child);
+      if (child.type === 'element' && child.tagName === 'li') lastItem = child;
+    }
+  }
+  list.children = children;
 }
 
 /** Word and Google Docs tables have no header row, but a GFM table must have one. */
@@ -1156,6 +1199,7 @@ export function clean(tree: Root): void {
       parent.children.splice(index, 1, ...node.children);
       return [SKIP, index];
     }
+    if (isList(node)) adoptSiblingLists(node);
     if (node.tagName === 'table') promoteFirstRowToHeader(node);
     if (node.tagName === 'span') {
       const [outer, ...inner] = tagsForStyle(style);
@@ -1231,10 +1275,46 @@ export async function rewriteImages(
 }
 ```
 
+- [ ] **Step 7b: Implement `src/core/tightLists.ts`**
+
+```ts
+import type { Root } from 'mdast';
+import { visit } from 'unist-util-visit';
+
+/**
+ * rehype-remark marks an item as loose as soon as it holds a nested list with two items.
+ * An item is loose only when it holds more than one paragraph or another block.
+ */
+export function tightenLists(tree: Root): void {
+  visit(tree, 'listItem', (item) => {
+    const [first, ...rest] = item.children;
+    item.spread = !(
+      (first === undefined || first.type === 'paragraph') &&
+      rest.every((child) => child.type === 'list')
+    );
+  });
+  visit(tree, 'list', (list) => {
+    list.spread = list.children.some((item) => item.spread);
+  });
+}
+```
+
+Add this case to `test/core/convert.test.ts` so a genuinely loose item stays loose:
+
+```ts
+describe('convert: lists', () => {
+  it('keeps an item with two paragraphs loose', async () => {
+    const result = await convert('<ul><li><p>a</p><p>b</p></li><li>c</li></ul>', save);
+    expect(result.markdown).toBe('- a\n\n  b\n\n- c');
+  });
+});
+```
+
 - [ ] **Step 8: Implement `src/core/convert.ts`**
 
 ```ts
 import type { Root } from 'hast';
+import type { Root as MdastRoot } from 'mdast';
 import rehypeParse from 'rehype-parse';
 import rehypeRemark from 'rehype-remark';
 import remarkGfm from 'remark-gfm';
@@ -1243,6 +1323,7 @@ import { unified } from 'unified';
 import { clean } from './html/clean';
 import { type ImageCollector, rewriteImages } from './html/images';
 import { rebuildWordLists } from './html/wordLists';
+import { tightenLists } from './tightLists';
 import type { ConvertOptions, ConvertResult } from './types';
 
 export async function convert(html: string, options: ConvertOptions): Promise<ConvertResult> {
@@ -1255,6 +1336,7 @@ export async function convert(html: string, options: ConvertOptions): Promise<Co
     .use(() => (tree: Root) => rewriteImages(tree, options, collected))
     // <u> has no Markdown equivalent: keep its text, not an emphasis
     .use(rehypeRemark, { handlers: { u: (state, node) => state.all(node) } })
+    .use(() => (tree: MdastRoot) => tightenLists(tree))
     .use(remarkGfm)
     .use(remarkStringify, {
       bullet: '-',
@@ -2461,7 +2543,17 @@ and extend the `switch`:
       return seedLinux(content);
 ```
 
-- [ ] **Step 3: Prove both helpers on the owner's machines**
+- [ ] **Step 3: Gates, commit, and ask before pushing**
+
+```bash
+pnpm format && pnpm lint && pnpm typecheck && pnpm test
+git add test/e2e/clipboard.ts test/e2e/seed-windows.ps1
+git commit -m "test: seed the clipboard on Linux and Windows"
+```
+
+Pushing publishes the branch. Confirm with the owner, then `git push -u origin feat/paste-as-markdown` so the other machines can check it out.
+
+- [ ] **Step 3b: Prove both helpers on the owner's machines**
 
 On each machine: check out the branch, `pnpm install --frozen-lockfile`, then `pnpm lint && pnpm typecheck && pnpm test:unit`, then the e2e suite — on Linux `xvfb-run -a bash -c 'copyq --start-server >/dev/null 2>&1 & until copyq eval true >/dev/null 2>&1; do sleep 0.2; done; pnpm test:e2e'`; on Windows `pnpm test:e2e` from an interactive desktop session (a remote shell without a desktop has no clipboard and cannot show the VS Code window — if that is all that is available, say so to the owner rather than skipping).
 
@@ -2509,16 +2601,14 @@ jobs:
         run: pnpm test:e2e
 ```
 
-- [ ] **Step 5: Push the branch and read the CI result**
+- [ ] **Step 5: Commit the workflow, push, and read the CI result**
 
 ```bash
-git add .github/workflows/ci.yml test/e2e/clipboard.ts test/e2e/seed-windows.ps1
+git add .github/workflows/ci.yml
 git commit -m "ci: run lint, typecheck and tests on macOS, Linux and Windows"
-git push -u origin feat/paste-as-markdown
+git push
 gh run watch
 ```
-
-Pushing publishes the branch — confirm with the owner before the first push.
 
 Expected: three green jobs.
 
@@ -2526,11 +2616,12 @@ Expected: three green jobs.
 
 Add a temporary step printing the clipboard's formats after a seed (Linux: `copyq clipboard '?'`; Windows: `powershell -STA -Command "Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.Clipboard]::GetDataObject().GetFormats()"`) to tell a seeding failure from a VS Code behavior difference. Fix the helper if it is a helper bug. If a clipboard shape cannot be seeded on an OS at all, **stop and ask the owner** before skipping or downgrading any e2e case on that OS — the spec forbids doing so unasked. If VS Code behaves differently from the spec's "Verified facts" on an OS, that also goes to the owner.
 
-- [ ] **Step 7: Remove temporary diagnostics, confirm green, commit**
+- [ ] **Step 7: Only if Step 6 changed anything — remove temporary diagnostics, confirm green, commit**
 
 ```bash
 git add .github/workflows/ci.yml test/e2e
-git commit -m "test: seed the clipboard on Linux and Windows"
+git commit -m "test: fix clipboard seeding on Linux and Windows"
+git push
 ```
 
 ---
@@ -2613,7 +2704,7 @@ The command also appears in VS Code's **Paste As…** list.
 ```bash
 pnpm install
 pnpm test:unit      # fast loop
-pnpm lint && pnpm typecheck && pnpm test   # gates; e2e opens VS Code and overwrites the clipboard
+pnpm format && pnpm lint && pnpm typecheck && pnpm test   # gates; e2e opens VS Code and overwrites the clipboard
 pnpm package        # build a .vsix
 ```
 
@@ -2644,7 +2735,7 @@ git commit -m "docs: add readme and extension design spec"
 | --- | --- |
 | AC1 | 5 |
 | AC2 | 5, 6 (guard) |
-| AC3 | 4 (golden `constructs`, `no-equivalent`, `nested-table`, `headerless-table`) |
+| AC3 | 4 (golden `constructs`, `no-equivalent`, `nested-table`, `headerless-table`; tight and loose lists) |
 | AC4 | 1 (purity lint), 4, 5 |
 | AC5 | 3, 4, 5, 6 |
 | AC6 | 2, 5, 6 |
@@ -2654,5 +2745,5 @@ git commit -m "docs: add readme and extension design spec"
 | AC10 | 1 (a), 5 (b), 6 |
 | AC11 | 5, 6 |
 | AC12 | 2, 4 |
-| AC13 | 4 (golden `google-docs`, `word`, `word-list`, `notion`, and the owner's real captures) |
+| AC13 | 4 (golden `google-docs`, `google-docs-list`, `word`, `word-list`, `notion`, and the owner's real captures) |
 | AC14 | 7 |
