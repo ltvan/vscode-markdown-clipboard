@@ -10,6 +10,6 @@ Every non-trivial change: **requirement → spec → plan → implement (TDD) �
 
 Run docs audit subagent after a merge or when drift is suspected.
 
-Quality gates: <!-- name the lint/typecheck/test commands that must pass before every commit -->
+Quality gates: `pnpm format && pnpm lint && pnpm typecheck && pnpm test` (e2e opens a VS Code window and overwrites the clipboard; `pnpm test:unit` is the fast loop).
 
 Commits: [docs/git-convention.md](docs/git-convention.md) — `<type>(<scope>): [issue ID] <subject>`.

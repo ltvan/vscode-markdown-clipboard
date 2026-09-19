@@ -49,11 +49,12 @@
   },
   "scripts": {
     "build": "node esbuild.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/e2e",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test:unit": "vitest run",
-    "test": "pnpm test:unit",
+    "test:e2e": "pnpm build && tsc -p test/e2e && vscode-test",
+    "test": "pnpm test:unit && pnpm test:e2e",
     "package": "node esbuild.mjs --production && vsce package --no-dependencies --skip-license"
   },
   "dependencies": {
