@@ -87,24 +87,26 @@ describe('PasteAsMarkdownProvider', () => {
 
   it('creates embedded images next to the document without overwriting, and arms the verifier', async () => {
     const edits = await provide(savedDoc, { 'text/html': `<img alt="p" src="${png}">` });
-    expect(edits![0]!.insertText).toBe('![p](assets/image-c414cd0e.png)');
+    expect(edits![0]!.insertText).toBe('![p](assets/image-c414cd0e204de974.png)');
     const created = (edits![0]!.additionalEdit as unknown as WorkspaceEdit).created;
     expect(created.map((c) => c.uri.toString())).toEqual([
-      'file:/ws/notes/assets/image-c414cd0e.png',
+      'file:/ws/notes/assets/image-c414cd0e204de974.png',
     ]);
     expect(created[0]!.options.ignoreIfExists).toBe(true);
     expect(created[0]!.options.contents?.length).toBe(70);
-    expect(verifier.expect).toHaveBeenCalledWith(savedDoc, '![p](assets/image-c414cd0e.png)', [
-      created[0]!.uri,
-    ]);
+    expect(verifier.expect).toHaveBeenCalledWith(
+      savedDoc,
+      '![p](assets/image-c414cd0e204de974.png)',
+      [created[0]!.uri],
+    );
   });
 
   it('honors the destination setting', async () => {
     testing.configuration.set('markdownClipboard.imageDestination', '../media');
     const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
-    expect(edits![0]!.insertText).toBe('![](../media/image-c414cd0e.png)');
+    expect(edits![0]!.insertText).toBe('![](../media/image-c414cd0e204de974.png)');
     const created = (edits![0]!.additionalEdit as unknown as WorkspaceEdit).created;
-    expect(created[0]!.uri.toString()).toBe('file:/ws/media/image-c414cd0e.png');
+    expect(created[0]!.uri.toString()).toBe('file:/ws/media/image-c414cd0e204de974.png');
   });
 
   it('expands ${workspaceFolder} and ${documentBaseName}, linking relative to the document', async () => {
@@ -113,16 +115,16 @@ describe('PasteAsMarkdownProvider', () => {
       '${workspaceFolder}/static/${documentBaseName}',
     );
     const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
-    expect(edits![0]!.insertText).toBe('![](../static/doc/image-c414cd0e.png)');
+    expect(edits![0]!.insertText).toBe('![](../static/doc/image-c414cd0e204de974.png)');
     const created = (edits![0]!.additionalEdit as unknown as WorkspaceEdit).created;
-    expect(created[0]!.uri.toString()).toBe('file:/ws/static/doc/image-c414cd0e.png');
+    expect(created[0]!.uri.toString()).toBe('file:/ws/static/doc/image-c414cd0e204de974.png');
   });
 
   it('rejects ${workspaceFolder} when the document is in no workspace folder', async () => {
     testing.workspaceFolder = undefined;
     testing.configuration.set('markdownClipboard.imageDestination', '${workspaceFolder}/static');
     const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
-    expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e.png)');
+    expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e204de974.png)');
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       'Paste as Markdown: cannot use "${workspaceFolder}/static" as the image destination (the document is not inside a workspace folder), so images go to "assets" instead.',
     );
@@ -137,7 +139,7 @@ describe('PasteAsMarkdownProvider', () => {
   it('rejects an absolute destination: uses the default and warns', async () => {
     testing.configuration.set('markdownClipboard.imageDestination', 'C:\\img');
     const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
-    expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e.png)');
+    expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e204de974.png)');
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       'Paste as Markdown: cannot use "C:\\img" as the image destination (it is an absolute path), so images go to "assets" instead.',
     );

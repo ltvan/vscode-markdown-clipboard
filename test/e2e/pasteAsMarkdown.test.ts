@@ -70,21 +70,21 @@ suite('Paste as Markdown', () => {
     const editor = await openFile('ac5/doc.md', '', [cursor(0, 0)]);
     seedClipboard({ html: `<img alt="p" src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
-    await waitFor(() => exists('ac5', 'assets', 'image-c414cd0e.png'), 'image file');
-    assert.strictEqual(editor.document.getText(), '![p](assets/image-c414cd0e.png)');
+    await waitFor(() => exists('ac5', 'assets', 'image-c414cd0e204de974.png'), 'image file');
+    assert.strictEqual(editor.document.getText(), '![p](assets/image-c414cd0e204de974.png)');
     assert.ok(
       fs
-        .readFileSync(path.join(workspaceRoot(), 'ac5', 'assets', 'image-c414cd0e.png'))
+        .readFileSync(path.join(workspaceRoot(), 'ac5', 'assets', 'image-c414cd0e204de974.png'))
         .equals(PNG),
     );
 
     await run();
     await waitFor(
-      () => editor.document.getText().split('image-c414cd0e.png').length === 3,
+      () => editor.document.getText().split('image-c414cd0e204de974.png').length === 3,
       'second paste',
     );
     assert.deepStrictEqual(fs.readdirSync(path.join(workspaceRoot(), 'ac5', 'assets')), [
-      'image-c414cd0e.png',
+      'image-c414cd0e204de974.png',
     ]);
     assert.deepStrictEqual(messages.errors, []);
   });
@@ -94,8 +94,11 @@ suite('Paste as Markdown', () => {
     const editor = await openFile('ac6/doc.md', '', [cursor(0, 0)]);
     seedClipboard({ html: `<img src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
-    await waitFor(() => exists('ac6', 'media', 'img', 'image-c414cd0e.png'), 'image in media/img');
-    assert.strictEqual(editor.document.getText(), '![](media/img/image-c414cd0e.png)');
+    await waitFor(
+      () => exists('ac6', 'media', 'img', 'image-c414cd0e204de974.png'),
+      'image in media/img',
+    );
+    assert.strictEqual(editor.document.getText(), '![](media/img/image-c414cd0e204de974.png)');
   });
 
   test('AC6: ${workspaceFolder} puts images under the workspace root and links relative to the document', async () => {
@@ -104,10 +107,13 @@ suite('Paste as Markdown', () => {
     seedClipboard({ html: `<img src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
     await waitFor(
-      () => exists('ac6-root', 'intro', 'image-c414cd0e.png'),
+      () => exists('ac6-root', 'intro', 'image-c414cd0e204de974.png'),
       'image under the workspace root',
     );
-    assert.strictEqual(editor.document.getText(), '![](../../ac6-root/intro/image-c414cd0e.png)');
+    assert.strictEqual(
+      editor.document.getText(),
+      '![](../../ac6-root/intro/image-c414cd0e204de974.png)',
+    );
   });
 
   test('AC6: rejects an absolute destination with a warning and uses assets/', async () => {
@@ -115,7 +121,10 @@ suite('Paste as Markdown', () => {
     await openFile('ac6abs/doc.md', '', [cursor(0, 0)]);
     seedClipboard({ html: `<img src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
-    await waitFor(() => exists('ac6abs', 'assets', 'image-c414cd0e.png'), 'image in assets');
+    await waitFor(
+      () => exists('ac6abs', 'assets', 'image-c414cd0e204de974.png'),
+      'image in assets',
+    );
     assert.strictEqual(messages.warnings.length, 1);
     assert.match(messages.warnings[0]!, /absolute path/);
   });
@@ -154,8 +163,8 @@ suite('Paste as Markdown', () => {
       seedClipboard({ html: `<img alt="p" src="${PNG_DATA_URI}">`, text: 'p' });
       await run();
       await waitFor(() => messages.errors.length === 1, 'error message');
-      assert.match(messages.errors[0]!, /could not save image-c414cd0e\.png/);
-      assert.strictEqual(editor.document.getText(), '![p](ro/image-c414cd0e.png)');
+      assert.match(messages.errors[0]!, /could not save image-c414cd0e204de974\.png/);
+      assert.strictEqual(editor.document.getText(), '![p](ro/image-c414cd0e204de974.png)');
       await vscode.commands.executeCommand('undo');
       await waitFor(() => editor.document.getText() === '', 'undo');
     } finally {

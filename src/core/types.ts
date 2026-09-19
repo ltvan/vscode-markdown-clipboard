@@ -1,4 +1,10 @@
-export type DropReason = 'unsupported-type' | 'undecodable' | 'unsupported-source' | 'cannot-save';
+export type DropReason =
+  | 'unsupported-type'
+  | 'undecodable'
+  | 'unsupported-source'
+  | 'cannot-save'
+  | 'unsafe-svg'
+  | 'name-collision';
 export interface ConvertOptions {
   imageDestination: string;
   canSaveImages: boolean;

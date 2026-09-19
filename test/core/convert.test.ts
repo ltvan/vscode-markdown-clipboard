@@ -12,10 +12,10 @@ describe('convert: embedded images', () => {
       save,
     );
     expect(result.markdown).toBe(
-      'a ![pic](assets/image-c414cd0e.png) b ![](assets/image-c414cd0e.png)',
+      'a ![pic](assets/image-c414cd0e204de974.png) b ![](assets/image-c414cd0e204de974.png)',
     );
     expect(result.images.map((image) => [image.fileName, image.bytes.length])).toEqual([
-      ['image-c414cd0e.png', 70],
+      ['image-c414cd0e204de974.png', 70],
     ]);
     expect(result.dropped).toEqual([]);
   });
@@ -23,8 +23,16 @@ describe('convert: embedded images', () => {
   it('saves a percent-encoded SVG', async () => {
     const result = await convert('<img alt="s" src="data:image/svg+xml;utf8,%3Csvg%2F%3E">', save);
     expect(result.images.map((image) => image.fileName)).toEqual([
-      expect.stringMatching(/^image-[0-9a-f]{8}\.svg$/),
+      expect.stringMatching(/^image-[0-9a-f]{16}\.svg$/),
     ]);
+  });
+
+  it('drops an SVG with a script or an external reference, keeping the rest', async () => {
+    const unclean = 'data:image/svg+xml;utf8,%3Csvg%20onload%3D%22x%22%2F%3E';
+    const result = await convert(`<p>x<img src="${unclean}"></p>`, save);
+    expect(result.markdown).toBe('x');
+    expect(result.images).toEqual([]);
+    expect(result.dropped.map((image) => image.reason)).toEqual(['unsafe-svg']);
   });
 
   it('uses the destination in the link', async () => {
@@ -32,7 +40,7 @@ describe('convert: embedded images', () => {
       imageDestination: '..\\my images\\',
       canSaveImages: true,
     });
-    expect(result.markdown).toBe('![](../my%20images/image-c414cd0e.png)');
+    expect(result.markdown).toBe('![](../my%20images/image-c414cd0e204de974.png)');
   });
 
   it('drops images it cannot handle and says why, keeping the rest', async () => {

@@ -4,7 +4,7 @@ import { testing } from './vscodeStub';
 import { ImageVerifier } from '../../src/vscode/imageVerifier';
 
 const doc = { uri: vscode.Uri.file('/ws/doc.md') } as vscode.TextDocument;
-const target = vscode.Uri.file('/ws/assets/image-c414cd0e.png');
+const target = vscode.Uri.file('/ws/assets/image-c414cd0e204de974.png');
 const options = { intervalMs: 10, attempts: 3, armedMs: 1000 };
 
 describe('ImageVerifier', () => {
@@ -28,7 +28,7 @@ describe('ImageVerifier', () => {
     testing.fireDidChangeTextDocument(doc, ['TEXT']);
     await vi.runAllTimersAsync();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'Paste as Markdown: could not save image-c414cd0e.png. The text was pasted; undo to revert it.',
+      'Paste as Markdown: could not save image-c414cd0e204de974.png. The text was pasted; undo to revert it.',
     );
   });
 

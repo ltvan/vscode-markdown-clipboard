@@ -6,6 +6,9 @@ const REASON_TEXT: Record<DropReason, (count: number) => string> = {
   undecodable: (n) => `${n} that could not be decoded`,
   'cannot-save': (n) =>
     `${n} embedded ${n === 1 ? 'image' : 'images'} that cannot be saved because the document has no folder`,
+  'unsafe-svg': (n) =>
+    `${n} SVG ${n === 1 ? 'image' : 'images'} with scripts or external references`,
+  'name-collision': (n) => `${n} whose file name collided with another image`,
 };
 
 export function summarizeDropped(dropped: DroppedImage[]): string | undefined {

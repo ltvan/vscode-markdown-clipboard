@@ -2,12 +2,16 @@ import type { Element, Parent, Root } from 'hast';
 import { visit } from 'unist-util-visit';
 import { decodeDataUri, extensionForMime, imageFileName } from '../images';
 import { imageLink } from '../paths';
+import { isCleanSvg } from '../svg';
 import type { ConvertOptions, ConvertedImage, DropReason, DroppedImage } from '../types';
 
 export interface ImageCollector {
   images: ConvertedImage[];
   dropped: DroppedImage[];
 }
+
+const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
+  a.length === b.length && a.every((byte, index) => byte === b[index]);
 
 export async function rewriteImages(
   tree: Root,
@@ -41,13 +45,22 @@ export async function rewriteImages(
       drop('unsupported-type');
       continue;
     }
+    if (decoded.mime === 'image/svg+xml' && !isCleanSvg(decoded.bytes)) {
+      drop('unsafe-svg');
+      continue;
+    }
     if (!options.canSaveImages) {
       drop('cannot-save');
       continue;
     }
     const fileName = await imageFileName(decoded.bytes, extension);
-    if (!out.images.some((image) => image.fileName === fileName)) {
+    const taken = out.images.find((image) => image.fileName === fileName);
+    if (!taken) {
       out.images.push({ fileName, bytes: decoded.bytes });
+    } else if (!sameBytes(taken.bytes, decoded.bytes)) {
+      // practically impossible with 16 hex digits, but the paste must not link the wrong bytes
+      drop('name-collision');
+      continue;
     }
     node.properties['src'] = imageLink(options.imageDestination, fileName);
   }

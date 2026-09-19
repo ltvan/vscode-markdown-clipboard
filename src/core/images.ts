@@ -56,7 +56,7 @@ export async function imageFileName(
   extension: string,
 ): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  const hash = Array.from(digest.slice(0, 4), (byte) => byte.toString(16).padStart(2, '0')).join(
+  const hash = Array.from(digest.slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join(
     '',
   );
   return `image-${hash}.${extension}`;

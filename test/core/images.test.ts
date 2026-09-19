@@ -1,4 +1,6 @@
+import type { Root } from 'hast';
 import { describe, expect, it } from 'vitest';
+import { type ImageCollector, rewriteImages } from '../../src/core/html/images';
 import { decodeDataUri, extensionForMime, imageFileName } from '../../src/core/images';
 import { PNG_BASE64 } from './png';
 
@@ -54,8 +56,31 @@ describe('extensionForMime', () => {
 });
 
 describe('imageFileName', () => {
-  it('is the first 8 hex digits of the SHA-256 of the bytes', async () => {
+  it('is the first 16 hex digits of the SHA-256 of the bytes', async () => {
     const bytes = decodeDataUri(`data:image/png;base64,${PNG_BASE64}`)!.bytes;
-    expect(await imageFileName(bytes, 'png')).toBe('image-c414cd0e.png');
+    expect(await imageFileName(bytes, 'png')).toBe('image-c414cd0e204de974.png');
+  });
+});
+
+describe('rewriteImages', () => {
+  const treeWith = (src: string): Root => ({
+    type: 'root',
+    children: [
+      {
+        type: 'element',
+        tagName: 'p',
+        properties: {},
+        children: [{ type: 'element', tagName: 'img', properties: { src }, children: [] }],
+      },
+    ],
+  });
+
+  it('drops an image whose name is taken by different bytes instead of linking those', async () => {
+    const tree = treeWith(`data:image/png;base64,${PNG_BASE64}`);
+    const taken = { fileName: 'image-c414cd0e204de974.png', bytes: new Uint8Array([1, 2, 3]) };
+    const out: ImageCollector = { images: [taken], dropped: [] };
+    await rewriteImages(tree, { imageDestination: 'assets', canSaveImages: true }, out);
+    expect(out.images).toEqual([taken]);
+    expect(out.dropped.map((image) => image.reason)).toEqual(['name-collision']);
   });
 });

@@ -75,7 +75,9 @@ describe('resolveDestination', () => {
 
 describe('imageLink', () => {
   it('joins destination and file name with /', () => {
-    expect(imageLink('assets', 'image-c414cd0e.png')).toBe('assets/image-c414cd0e.png');
+    expect(imageLink('assets', 'image-c414cd0e204de974.png')).toBe(
+      'assets/image-c414cd0e204de974.png',
+    );
   });
   it('uses / even for a Windows-style destination', () => {
     expect(imageLink('media\\img\\', 'a.png')).toBe('media/img/a.png');
