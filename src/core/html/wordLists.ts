@@ -52,8 +52,14 @@ function buildLists(items: ListItem[]): Element[] {
       const list = element(item.ordered ? 'ol' : 'ul', []);
       if (frame.lastItem) frame.lastItem.children.push(list);
       else top.push(list);
-      frame = { level: item.level, list, lastItem: undefined };
-      stack.push(frame);
+      if (frame.list) {
+        frame = { level: item.level, list, lastItem: undefined };
+        stack.push(frame);
+      } else {
+        // the frame is still empty (a list starting below level 1): it becomes this list
+        frame.level = item.level;
+        frame.list = list;
+      }
     }
     const listItem = element('li', item.children);
     frame.list!.children.push(listItem);
@@ -81,8 +87,11 @@ export function rebuildWordLists(tree: Root): void {
           ordered: /^(\d+|[a-z]{1,3})[.)]/i.test(marker),
           children: child.children,
         });
-      } else if (child.type === 'text' && child.value.trim() === '' && run.length > 0) {
-        continue; // whitespace between list paragraphs
+      } else if (
+        run.length > 0 &&
+        (child.type === 'comment' || (child.type === 'text' && child.value.trim() === ''))
+      ) {
+        continue; // whitespace and Word's conditional comments between list paragraphs
       } else {
         flush();
         rebuilt.push(child);

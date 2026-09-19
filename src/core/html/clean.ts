@@ -18,11 +18,26 @@ const isList = (node: ElementContent): node is Element =>
 function adoptSiblingLists(list: Element): void {
   const children: ElementContent[] = [];
   let lastItem: Element | undefined;
+  const keep = (child: ElementContent): void => {
+    children.push(child);
+    if (child.type === 'element' && child.tagName === 'li') lastItem = child;
+  };
   for (const child of list.children) {
-    if (isList(child) && lastItem) lastItem.children.push(child);
-    else {
-      children.push(child);
-      if (child.type === 'element' && child.tagName === 'li') lastItem = child;
+    if (!isList(child)) {
+      keep(child);
+      continue;
+    }
+    // a sibling list before the first item has nothing to nest under
+    if (!lastItem) {
+      for (const item of child.children) keep(item);
+      continue;
+    }
+    // several sibling lists in a row belong to one nested list, not to one each
+    const nested = lastItem.children.at(-1);
+    if (nested !== undefined && isList(nested) && nested.tagName === child.tagName) {
+      nested.children.push(...child.children);
+    } else {
+      lastItem.children.push(child);
     }
   }
   list.children = children;
@@ -53,9 +68,9 @@ export function clean(tree: Root): void {
       return [SKIP, index];
     }
     if (node.type !== 'element') return undefined;
-    // Word's <o:p> and friends
+    // Word's <o:p> and its smart tags: the wrapper goes, the text it wraps stays
     if (node.tagName.includes(':')) {
-      parent.children.splice(index, 1);
+      parent.children.splice(index, 1, ...node.children);
       return [SKIP, index];
     }
     const style = styleOf(node);

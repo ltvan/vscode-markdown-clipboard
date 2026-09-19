@@ -75,4 +75,10 @@ describe('convert: lists', () => {
     const result = await convert('<ul><li><p>a</p><p>b</p></li><li>c</li></ul>', save);
     expect(result.markdown).toBe('- a\n\n  b\n\n- c');
   });
+
+  it('keeps an item holding only a nested list tight', async () => {
+    const result = await convert('<ul><li><ul><li>x</li><li>y</li></ul></li><li>z</li></ul>', save);
+    expect(result.markdown).toBe('- - x\n  - y\n- z');
+    expect(result.markdown).not.toContain('\n\n');
+  });
 });
