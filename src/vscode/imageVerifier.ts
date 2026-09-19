@@ -11,10 +11,12 @@ export interface ImageVerifierOptions {
  * inserts the text even when a file cannot be created. The text change fires
  * before the files exist, so wait for it and then poll.
  */
-export class ImageVerifier {
+export class ImageVerifier implements vscode.Disposable {
   private readonly intervalMs: number;
   private readonly attempts: number;
   private readonly armedMs: number;
+  /** One pending check per document and inserted text, so listeners cannot stack up. */
+  private readonly pending = new Map<vscode.TextDocument, Map<string, () => void>>();
 
   constructor(options: ImageVerifierOptions = {}) {
     this.intervalMs = options.intervalMs ?? 150;
@@ -23,6 +25,10 @@ export class ImageVerifier {
   }
 
   expect(document: vscode.TextDocument, insertedText: string, targets: vscode.Uri[]): void {
+    const byText = this.pending.get(document) ?? new Map<string, () => void>();
+    this.pending.set(document, byText);
+    byText.get(insertedText)?.();
+
     const subscription = vscode.workspace.onDidChangeTextDocument((event) => {
       if (event.document !== document) return;
       if (
@@ -34,11 +40,21 @@ export class ImageVerifier {
       void this.report(targets);
     });
     // the user may pick another paste option, so the edit is never applied
-    const timer = setTimeout(() => subscription.dispose(), this.armedMs);
+    const timer = setTimeout(() => disarm(), this.armedMs);
     const disarm = (): void => {
       clearTimeout(timer);
       subscription.dispose();
+      byText.delete(insertedText);
+      if (byText.size === 0) this.pending.delete(document);
     };
+    byText.set(insertedText, disarm);
+  }
+
+  dispose(): void {
+    for (const byText of [...this.pending.values()]) {
+      for (const disarm of [...byText.values()]) disarm();
+    }
+    this.pending.clear();
   }
 
   private async report(targets: vscode.Uri[]): Promise<void> {

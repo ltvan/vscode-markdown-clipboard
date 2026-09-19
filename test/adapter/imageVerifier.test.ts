@@ -39,6 +39,28 @@ describe('ImageVerifier', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps one pending check per document and text, however often it is armed', async () => {
+    const verifier = new ImageVerifier(options);
+    verifier.expect(doc, 'TEXT', [target]);
+    verifier.expect(doc, 'TEXT', [target]);
+    expect(testing.listenerCount()).toBe(1);
+    testing.fireDidChangeTextDocument(doc, ['TEXT']);
+    await vi.runAllTimersAsync();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('disarms everything when disposed', async () => {
+    const verifier = new ImageVerifier(options);
+    verifier.expect(doc, 'ONE', [target]);
+    verifier.expect(doc, 'TWO', [target]);
+    expect(testing.listenerCount()).toBe(2);
+    verifier.dispose();
+    expect(testing.listenerCount()).toBe(0);
+    testing.fireDidChangeTextDocument(doc, ['ONE']);
+    await vi.runAllTimersAsync();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
   it('ignores other edits and other documents, and disarms itself if the edit is never applied', async () => {
     new ImageVerifier(options).expect(doc, 'TEXT', [target]);
     testing.fireDidChangeTextDocument(doc, ['typing']);

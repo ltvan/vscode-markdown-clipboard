@@ -4,6 +4,7 @@ import { testing, Uri as StubUri, type WorkspaceEdit } from './vscodeStub';
 import { PNG_BASE64 } from '../core/png';
 import { ImageVerifier } from '../../src/vscode/imageVerifier';
 import {
+  type MarkdownPasteEdit,
   PASTE_KIND,
   PASTE_METADATA,
   PasteAsMarkdownProvider,
@@ -31,6 +32,11 @@ const automatic: vscode.DocumentPasteEditContext = {
   triggerKind: vscode.DocumentPasteTriggerKind.Automatic,
   only: undefined,
 };
+/** VS Code also asks for edits to fill the "Paste As…" picker, with no kind requested. */
+const picker: vscode.DocumentPasteEditContext = {
+  triggerKind: vscode.DocumentPasteTriggerKind.PasteAs,
+  only: undefined,
+};
 const token = {} as vscode.CancellationToken;
 const png = `data:image/png;base64,${PNG_BASE64}`;
 
@@ -42,6 +48,16 @@ describe('PasteAsMarkdownProvider', () => {
     flavors: Record<string, string>,
     context: vscode.DocumentPasteEditContext = pasteAs,
   ) => provider.provideDocumentPasteEdits(doc, [], transfer(flavors), context, token);
+  /** What VS Code does just before applying an edit the user chose. */
+  const choose = async (
+    doc: vscode.TextDocument,
+    flavors: Record<string, string>,
+    context: vscode.DocumentPasteEditContext = pasteAs,
+  ): Promise<MarkdownPasteEdit[] | undefined> => {
+    const edits = await provide(doc, flavors, context);
+    for (const edit of edits ?? []) await provider.resolveDocumentPasteEdit(edit, token);
+    return edits;
+  };
 
   beforeEach(() => {
     testing.reset();
@@ -86,7 +102,7 @@ describe('PasteAsMarkdownProvider', () => {
   });
 
   it('creates embedded images next to the document without overwriting, and arms the verifier', async () => {
-    const edits = await provide(savedDoc, { 'text/html': `<img alt="p" src="${png}">` });
+    const edits = await choose(savedDoc, { 'text/html': `<img alt="p" src="${png}">` });
     expect(edits![0]!.insertText).toBe('![p](assets/image-c414cd0e204de974.png)');
     const created = (edits![0]!.additionalEdit as unknown as WorkspaceEdit).created;
     expect(created.map((c) => c.uri.toString())).toEqual([
@@ -123,7 +139,7 @@ describe('PasteAsMarkdownProvider', () => {
   it('rejects ${workspaceFolder} when the document is in no workspace folder', async () => {
     testing.workspaceFolder = undefined;
     testing.configuration.set('markdownClipboard.imageDestination', '${workspaceFolder}/static');
-    const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
+    const edits = await choose(savedDoc, { 'text/html': `<img src="${png}">` });
     expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e204de974.png)');
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       'Paste as Markdown: cannot use "${workspaceFolder}/static" as the image destination (the document is not inside a workspace folder), so images go to "assets" instead.',
@@ -132,13 +148,13 @@ describe('PasteAsMarkdownProvider', () => {
 
   it('does not read the destination for an untitled document', async () => {
     testing.configuration.set('markdownClipboard.imageDestination', '/abs');
-    await provide(untitledDoc, { 'text/html': '<p>x</p>' });
+    await choose(untitledDoc, { 'text/html': '<p>x</p>' });
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
   it('rejects an absolute destination: uses the default and warns', async () => {
     testing.configuration.set('markdownClipboard.imageDestination', 'C:\\img');
-    const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
+    const edits = await choose(savedDoc, { 'text/html': `<img src="${png}">` });
     expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e204de974.png)');
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       'Paste as Markdown: cannot use "C:\\img" as the image destination (it is an absolute path), so images go to "assets" instead.',
@@ -146,7 +162,7 @@ describe('PasteAsMarkdownProvider', () => {
   });
 
   it('drops embedded images in an untitled document with one warning, and pastes the rest', async () => {
-    const edits = await provide(untitledDoc, {
+    const edits = await choose(untitledDoc, {
       'text/html': `<p>text<img src="${png}"><img src="cid:1"></p>`,
     });
     expect(edits![0]!.insertText).toBe('text');
@@ -162,5 +178,48 @@ describe('PasteAsMarkdownProvider', () => {
     convert.mockRejectedValueOnce(new Error('boom'));
     expect(await provide(savedDoc, { 'text/html': '<p>x</p>' })).toBeUndefined();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Paste as Markdown failed: boom');
+  });
+
+  it('shows an error when the clipboard cannot be read', async () => {
+    const unreadable = {
+      get: () => ({ asString: async () => Promise.reject(new Error('gone')) }),
+    } as unknown as vscode.DataTransfer;
+    expect(
+      await provider.provideDocumentPasteEdits(savedDoc, [], unreadable, pasteAs, token),
+    ).toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Paste as Markdown failed: gone');
+  });
+
+  it('stays silent when an option the picker only lists cannot be built', async () => {
+    convert.mockRejectedValueOnce(new Error('boom'));
+    expect(await provide(savedDoc, { 'text/html': '<p>x</p>' }, picker)).toBeUndefined();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('offers an edit without any side effect while the picker lists options', async () => {
+    const edits = await provide(
+      untitledDoc,
+      { 'text/html': `<p>text<img src="${png}"></p>` },
+      picker,
+    );
+    expect(edits![0]!.insertText).toBe('text');
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    expect(verifier.expect).not.toHaveBeenCalled();
+  });
+
+  it('warns and arms the verifier once, only when the edit is resolved', async () => {
+    const edits = await provide(savedDoc, {
+      'text/html': `<p><img src="${png}"><img src="cid:1"></p>`,
+    });
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    expect(verifier.expect).not.toHaveBeenCalled();
+
+    const resolved = await provider.resolveDocumentPasteEdit(edits![0]!, token);
+    expect(resolved).toBe(edits![0]);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      'Paste as Markdown: 1 image was not pasted (1 from a source that cannot be linked).',
+    );
+    expect(verifier.expect).toHaveBeenCalledTimes(1);
   });
 });
