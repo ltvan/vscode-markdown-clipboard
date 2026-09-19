@@ -1,5 +1,6 @@
 import type { Element, ElementContent, Nodes, Root } from 'hast';
 import { visit } from 'unist-util-visit';
+import { styleOf } from './style';
 
 interface ListItem {
   level: number;
@@ -12,11 +13,6 @@ interface Frame {
   list: Element | undefined;
   lastItem: Element | undefined;
 }
-
-const styleOf = (node: Element): string =>
-  String(node.properties['style'] ?? '')
-    .toLowerCase()
-    .replace(/\s+/g, '');
 
 const textOf = (node: Nodes): string =>
   node.type === 'text' ? node.value : 'children' in node ? node.children.map(textOf).join('') : '';

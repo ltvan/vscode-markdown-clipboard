@@ -1,11 +1,6 @@
 import type { Element, ElementContent, Root } from 'hast';
 import { SKIP, visit } from 'unist-util-visit';
-
-function styleOf(node: Element): string {
-  return String(node.properties['style'] ?? '')
-    .toLowerCase()
-    .replace(/\s+/g, '');
-}
+import { styleOf } from './style';
 
 /** Google Docs expresses emphasis as styled spans; one span can carry several. */
 function tagsForStyle(style: string): string[] {
