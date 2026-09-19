@@ -13,6 +13,7 @@ Status: draft (2026-09-20)
 ## Global constraints
 
 - `engines.vscode` is `^1.97.0`.
+- `markdownClipboard.imageDestination` supports exactly three variables: `${workspaceFolder}` and `${documentDirName}` (only at the start) and `${documentBaseName}` (anywhere). Links are always relative to the document.
 - Command id `markdownClipboard.pasteAsMarkdown`, title `Paste as Markdown`, category `Markdown Clipboard`. Setting `markdownClipboard.imageDestination`, resource-scoped, default `assets`. Paste kind `markdown.fromHtml`.
 - No default keybinding.
 - Only files under `src/vscode/` and `src/extension.ts` import `vscode`. `src/core/` imports no `vscode`, `fs`, `http`, `https`, `net` and does not use `fetch`.
@@ -34,7 +35,7 @@ Status: draft (2026-09-20)
 | `esbuild.mjs` | Bundle `src/extension.ts` → `dist/extension.js` (CJS, `vscode` external) |
 | `eslint.config.mjs`, `vitest.config.mts`, `.vscode-test.mjs` | Lint, unit-test and e2e runner configuration |
 | `src/core/types.ts` | `ConvertOptions`, `ConvertResult`, `ConvertedImage`, `DroppedImage`, `DropReason` |
-| `src/core/paths.ts` | Absolute-destination predicate, target segments, Markdown link |
+| `src/core/paths.ts` | Destination variables, absolute-destination predicate, target segments, Markdown link |
 | `src/core/images.ts` | `data:` URI decoding, MIME → extension, content-hash file name |
 | `src/core/html/wordLists.ts` | Rebuild Word's list paragraphs (`mso-list`) into real `<ul>` / `<ol>` |
 | `src/core/html/clean.ts` | Remove comments and namespaced (Word) elements, unwrap Google Docs wrapper, map styled spans |
@@ -42,7 +43,7 @@ Status: draft (2026-09-20)
 | `src/core/convert.ts` | The seam: `convert(html, options)` |
 | `src/core/tightLists.ts` | Markdown-tree fix: nested lists stay tight |
 | `src/core/dropped.ts` | `summarizeDropped()` — the one AC7 warning text |
-| `src/vscode/settings.ts` | Read and validate `imageDestination` |
+| `src/vscode/settings.ts` | Read `imageDestination` and resolve its variables for the document |
 | `src/vscode/pasteProvider.ts` | The paste edit provider |
 | `src/vscode/imageVerifier.ts` | After the paste lands, report image files that do not exist (AC9(b)) |
 | `src/vscode/pasteCommand.ts` | The command: language check, then `editor.action.pasteAs` |
@@ -101,7 +102,7 @@ Step 8 adds `contributes` after its test has been seen failing. Everything else 
           "type": "string",
           "default": "assets",
           "scope": "resource",
-          "markdownDescription": "Folder for images embedded in pasted content, relative to the document's folder. `..` is allowed; an empty value means the document's own folder; an absolute path is rejected."
+          "markdownDescription": "Folder for images embedded in pasted content. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). It may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's file name without extension) anywhere. Links are always written relative to the document. An absolute path is rejected."
         }
       }
     }
@@ -350,14 +351,34 @@ git commit -m "build: scaffold extension with lint, typecheck and unit test gate
 
 - Produces:
   - `isAbsoluteDestination(destination: string): boolean`
-  - `imageTargetSegments(destination: string, fileName: string): string[]` — path segments relative to the document's folder, may contain `..`
-  - `imageLink(destination: string, fileName: string): string` — the Markdown link target
+  - `resolveDestination(template: string, document: DocumentLocation): ResolvedDestination` — expands the variables and returns the destination as a path relative to the document's folder, which is what `imageLink`, `imageTargetSegments` and `ConvertOptions.imageDestination` take:
+
+```ts
+export type DestinationFailure =
+  'absolute' | 'unknown-variable' | 'misplaced-variable' | 'no-workspace';
+export interface DocumentLocation {
+  /** File name without extension. */
+  baseName: string;
+  /** Segments of the document's folder relative to its workspace folder; undefined when it is in none. */
+  workspaceRelativeDir: string[] | undefined;
+}
+export type ResolvedDestination =
+  { ok: true; path: string } | { ok: false; reason: DestinationFailure };
+```
+
+- `imageTargetSegments(destination: string, fileName: string): string[]` — path segments relative to the document's folder, may contain `..`
+- `imageLink(destination: string, fileName: string): string` — the Markdown link target
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { imageLink, imageTargetSegments, isAbsoluteDestination } from '../../src/core/paths';
+import {
+  imageLink,
+  imageTargetSegments,
+  isAbsoluteDestination,
+  resolveDestination,
+} from '../../src/core/paths';
 
 describe('isAbsoluteDestination', () => {
   it.each(['/x', 'C:\\x', 'c:/x', '\\\\server\\share', ' /x'])('rejects %j on every OS', (d) => {
@@ -365,6 +386,52 @@ describe('isAbsoluteDestination', () => {
   });
   it.each(['assets', '../shared/img', '', 'my images', './a'])('accepts %j', (d) => {
     expect(isAbsoluteDestination(d)).toBe(false);
+  });
+});
+
+describe('resolveDestination', () => {
+  const doc = { baseName: 'intro', workspaceRelativeDir: ['docs', 'guide'] };
+
+  it.each([
+    ['assets', 'assets'],
+    ['', ''],
+    ['../shared', '../shared'],
+    ['assets/./x/../y', 'assets/y'],
+    ['${documentDirName}/assets', 'assets'],
+    ['assets/${documentBaseName}', 'assets/intro'],
+    ['${workspaceFolder}/assets', '../../assets'],
+    ['${workspaceFolder}', '../..'],
+    ['${workspaceFolder}/docs/guide/img', 'img'],
+    ['${workspaceFolder}/docs/assets/${documentBaseName}', '../assets/intro'],
+    ['${workspaceFolder}\\static\\img', '../../static/img'],
+    ['${workspaceFolder}/../outside', '../../../outside'],
+  ])('resolves %j to %j, relative to the document', (template, path) => {
+    expect(resolveDestination(template, doc)).toEqual({ ok: true, path });
+  });
+
+  it('resolves from a document at the workspace root', () => {
+    expect(
+      resolveDestination('${workspaceFolder}/assets', { baseName: 'x', workspaceRelativeDir: [] }),
+    ).toEqual({ ok: true, path: 'assets' });
+  });
+
+  it.each([
+    ['/abs', 'absolute'],
+    ['C:\\x', 'absolute'],
+    ['a/${workspaceFolder}', 'misplaced-variable'],
+    ['x/${documentDirName}', 'misplaced-variable'],
+    ['${fileName}/x', 'unknown-variable'],
+  ])('rejects %j as %s', (template, reason) => {
+    expect(resolveDestination(template, doc)).toEqual({ ok: false, reason });
+  });
+
+  it('rejects ${workspaceFolder} for a document outside every workspace folder', () => {
+    expect(
+      resolveDestination('${workspaceFolder}/assets', {
+        baseName: 'x',
+        workspaceRelativeDir: undefined,
+      }),
+    ).toEqual({ ok: false, reason: 'no-workspace' });
   });
 });
 
@@ -403,6 +470,64 @@ export function isAbsoluteDestination(destination: string): boolean {
   return /^([\\/]|[A-Za-z]:)/.test(destination.trim());
 }
 
+export type DestinationFailure =
+  'absolute' | 'unknown-variable' | 'misplaced-variable' | 'no-workspace';
+
+export interface DocumentLocation {
+  /** File name without extension. */
+  baseName: string;
+  /** Segments of the document's folder relative to its workspace folder; undefined when it is in none. */
+  workspaceRelativeDir: string[] | undefined;
+}
+
+export type ResolvedDestination =
+  { ok: true; path: string } | { ok: false; reason: DestinationFailure };
+
+const WORKSPACE_FOLDER = '${workspaceFolder}';
+const DOCUMENT_DIR = '${documentDirName}';
+
+function collapse(segments: string[]): string[] {
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment === '..' && out.length > 0 && out.at(-1) !== '..') out.pop();
+    else out.push(segment);
+  }
+  return out;
+}
+
+/** Expands the destination's variables into a path relative to the document's folder. */
+export function resolveDestination(
+  template: string,
+  document: DocumentLocation,
+): ResolvedDestination {
+  let rest = template.trim().replaceAll('${documentBaseName}', document.baseName);
+  let fromWorkspace = false;
+  if (rest.startsWith(WORKSPACE_FOLDER)) {
+    fromWorkspace = true;
+    rest = rest.slice(WORKSPACE_FOLDER.length);
+  } else if (rest.startsWith(DOCUMENT_DIR)) {
+    rest = rest.slice(DOCUMENT_DIR.length);
+  } else if (isAbsoluteDestination(rest)) {
+    return { ok: false, reason: 'absolute' };
+  }
+  if (rest.includes(WORKSPACE_FOLDER) || rest.includes(DOCUMENT_DIR)) {
+    return { ok: false, reason: 'misplaced-variable' };
+  }
+  if (/\$\{[^}]*\}/.test(rest)) return { ok: false, reason: 'unknown-variable' };
+
+  const target = collapse(destinationSegments(rest));
+  if (!fromWorkspace) return { ok: true, path: target.join('/') };
+
+  const from = document.workspaceRelativeDir;
+  if (!from) return { ok: false, reason: 'no-workspace' };
+  let common = 0;
+  while (common < from.length && common < target.length && from[common] === target[common]) {
+    common++;
+  }
+  const ups = Array<string>(from.length - common).fill('..');
+  return { ok: true, path: [...ups, ...target.slice(common)].join('/') };
+}
+
 function destinationSegments(destination: string): string[] {
   return destination
     .trim()
@@ -430,7 +555,7 @@ Run: `pnpm exec vitest run test/core/paths.test.ts` — Expected: PASS. Then `pn
 
 ```bash
 git add src/core/paths.ts test/core/paths.test.ts
-git commit -m "feat(core): compute image target path and markdown link"
+git commit -m "feat(core): resolve image destination variables, target path and markdown link"
 ```
 
 ---
@@ -1683,6 +1808,18 @@ suite('Paste as Markdown', () => {
     assert.strictEqual(editor.document.getText(), '![](media/img/image-c414cd0e.png)');
   });
 
+  test('AC6: ${workspaceFolder} puts images under the workspace root and links relative to the document', async () => {
+    await setDestination('${workspaceFolder}/ac6-root/${documentBaseName}');
+    const editor = await openFile('ac6vars/guide/intro.md', '', [cursor(0, 0)]);
+    seedClipboard({ html: `<img src="${PNG_DATA_URI}">`, text: 'p' });
+    await run();
+    await waitFor(
+      () => exists('ac6-root', 'intro', 'image-c414cd0e.png'),
+      'image under the workspace root',
+    );
+    assert.strictEqual(editor.document.getText(), '![](../../ac6-root/intro/image-c414cd0e.png)');
+  });
+
   test('AC6: rejects an absolute destination with a warning and uses assets/', async () => {
     await setDestination('/absolute/place');
     await openFile('ac6abs/doc.md', '', [cursor(0, 0)]);
@@ -1858,9 +1995,9 @@ Do not commit yet.
 
 **Interfaces:**
 
-- Consumes: `convert`, `summarizeDropped`, `isAbsoluteDestination`, `imageTargetSegments`, types from Tasks 2–4.
+- Consumes: `convert`, `summarizeDropped`, `resolveDestination`, `DestinationFailure`, `imageTargetSegments`, types from Tasks 2–4.
 - Produces:
-  - `DEFAULT_IMAGE_DESTINATION = 'assets'`; `readSettings(resource: vscode.Uri): { imageDestination: string; rejectedDestination?: string }`
+  - `DEFAULT_IMAGE_DESTINATION = 'assets'`; `readSettings(document: vscode.TextDocument): { imageDestination: string; rejected?: { configured: string; reason: DestinationFailure } }` — `imageDestination` is already resolved to a path relative to the document's folder
   - `class ImageVerifier { constructor(options?: { intervalMs?: number; attempts?: number; armedMs?: number }); expect(document: vscode.TextDocument, insertedText: string, targets: vscode.Uri[]): void }`
   - `PASTE_KIND: vscode.DocumentDropOrPasteEditKind`, `PASTE_METADATA: vscode.DocumentPasteProviderMetadata`, `class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider` (constructor takes an `ImageVerifier`)
   - `pasteAsMarkdown(): Promise<void>`
@@ -1929,6 +2066,7 @@ const changeListeners = new Set<ChangeListener>();
 
 export const testing = {
   configuration: new Map<string, unknown>(),
+  workspaceFolder: undefined as Uri | undefined,
   existingFiles: new Set<string>(),
   fireDidChangeTextDocument(document: unknown, texts: string[]): void {
     for (const listener of [...changeListeners]) {
@@ -1938,6 +2076,7 @@ export const testing = {
   listenerCount: () => changeListeners.size,
   reset(): void {
     testing.configuration.clear();
+    testing.workspaceFolder = Uri.file('/ws');
     testing.existingFiles.clear();
     changeListeners.clear();
     window.activeTextEditor = undefined;
@@ -1954,6 +2093,10 @@ export const window = {
 export const commands = { executeCommand: vi.fn(async () => undefined) };
 
 export const workspace = {
+  getWorkspaceFolder(uri: Uri): { uri: Uri } | undefined {
+    const folder = testing.workspaceFolder;
+    return folder && uri.path.startsWith(`${folder.path}/`) ? { uri: folder } : undefined;
+  },
   getConfiguration: (section: string) => ({
     get: <T>(key: string, fallback: T): T =>
       (testing.configuration.get(`${section}.${key}`) as T | undefined) ?? fallback,
@@ -2085,12 +2228,39 @@ describe('PasteAsMarkdownProvider', () => {
     expect(created[0]!.uri.toString()).toBe('file:/ws/media/image-c414cd0e.png');
   });
 
+  it('expands ${workspaceFolder} and ${documentBaseName}, linking relative to the document', async () => {
+    testing.configuration.set(
+      'markdownClipboard.imageDestination',
+      '${workspaceFolder}/static/${documentBaseName}',
+    );
+    const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
+    expect(edits![0]!.insertText).toBe('![](../static/doc/image-c414cd0e.png)');
+    const created = (edits![0]!.additionalEdit as unknown as WorkspaceEdit).created;
+    expect(created[0]!.uri.toString()).toBe('file:/ws/static/doc/image-c414cd0e.png');
+  });
+
+  it('rejects ${workspaceFolder} when the document is in no workspace folder', async () => {
+    testing.workspaceFolder = undefined;
+    testing.configuration.set('markdownClipboard.imageDestination', '${workspaceFolder}/static');
+    const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
+    expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e.png)');
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      'Paste as Markdown: cannot use "${workspaceFolder}/static" as the image destination (the document is not inside a workspace folder), so images go to "assets" instead.',
+    );
+  });
+
+  it('does not read the destination for an untitled document', async () => {
+    testing.configuration.set('markdownClipboard.imageDestination', '/abs');
+    await provide(untitledDoc, { 'text/html': '<p>x</p>' });
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
   it('rejects an absolute destination: uses the default and warns', async () => {
     testing.configuration.set('markdownClipboard.imageDestination', 'C:\\img');
     const edits = await provide(savedDoc, { 'text/html': `<img src="${png}">` });
     expect(edits![0]!.insertText).toBe('![](assets/image-c414cd0e.png)');
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      'Paste as Markdown: "C:\\img" is an absolute path, so images go to "assets" instead. Set markdownClipboard.imageDestination to a path relative to the document.',
+      'Paste as Markdown: cannot use "C:\\img" as the image destination (it is an absolute path), so images go to "assets" instead.',
     );
   });
 
@@ -2212,23 +2382,37 @@ Run: `pnpm test:unit` — Expected: FAIL, `src/vscode/*` modules not found.
 
 ```ts
 import * as vscode from 'vscode';
-import { isAbsoluteDestination } from '../core/paths';
+import { type DestinationFailure, type DocumentLocation, resolveDestination } from '../core/paths';
 
 export const DEFAULT_IMAGE_DESTINATION = 'assets';
 
 export interface Settings {
+  /** Already resolved: a path relative to the document's folder. */
   imageDestination: string;
-  rejectedDestination?: string;
+  rejected?: { configured: string; reason: DestinationFailure };
 }
 
-export function readSettings(resource: vscode.Uri): Settings {
+function locate(document: vscode.TextDocument): DocumentLocation {
+  const path = document.uri.path;
+  const fileName = path.slice(path.lastIndexOf('/') + 1);
+  const dot = fileName.lastIndexOf('.');
+  const baseName = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!folder) return { baseName, workspaceRelativeDir: undefined };
+  const relative = path.slice(folder.uri.path.replace(/\/$/, '').length);
+  return { baseName, workspaceRelativeDir: relative.split('/').filter(Boolean).slice(0, -1) };
+}
+
+export function readSettings(document: vscode.TextDocument): Settings {
   const configured = vscode.workspace
-    .getConfiguration('markdownClipboard', resource)
+    .getConfiguration('markdownClipboard', document.uri)
     .get<string>('imageDestination', DEFAULT_IMAGE_DESTINATION);
-  if (isAbsoluteDestination(configured)) {
-    return { imageDestination: DEFAULT_IMAGE_DESTINATION, rejectedDestination: configured };
-  }
-  return { imageDestination: configured };
+  const resolved = resolveDestination(configured, locate(document));
+  if (resolved.ok) return { imageDestination: resolved.path };
+  return {
+    imageDestination: DEFAULT_IMAGE_DESTINATION,
+    rejected: { configured, reason: resolved.reason },
+  };
 }
 ```
 
@@ -2313,7 +2497,8 @@ import { convert } from '../core/convert';
 import { summarizeDropped } from '../core/dropped';
 import { imageTargetSegments } from '../core/paths';
 import type { ImageVerifier } from './imageVerifier';
-import { DEFAULT_IMAGE_DESTINATION, readSettings } from './settings';
+import type { DestinationFailure } from '../core/paths';
+import { DEFAULT_IMAGE_DESTINATION, readSettings, type Settings } from './settings';
 
 export const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Empty.append('markdown', 'fromHtml');
 
@@ -2323,6 +2508,13 @@ export const PASTE_METADATA: vscode.DocumentPasteProviderMetadata = {
 };
 
 const TITLE = 'Paste as Markdown';
+
+const REJECTION_TEXT: Record<DestinationFailure, string> = {
+  absolute: 'it is an absolute path',
+  'unknown-variable': 'it uses an unknown variable',
+  'misplaced-variable': '${workspaceFolder} and ${documentDirName} are only allowed at the start',
+  'no-workspace': 'the document is not inside a workspace folder',
+};
 
 export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider {
   constructor(private readonly verifier: ImageVerifier) {}
@@ -2343,10 +2535,13 @@ export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider
       return plain ? [this.edit(plain)] : undefined;
     }
 
-    const settings = readSettings(document.uri);
-    if (settings.rejectedDestination !== undefined) {
+    const canSaveImages = document.uri.scheme !== 'untitled';
+    const settings: Settings = canSaveImages
+      ? readSettings(document)
+      : { imageDestination: DEFAULT_IMAGE_DESTINATION };
+    if (settings.rejected) {
       void vscode.window.showWarningMessage(
-        `Paste as Markdown: "${settings.rejectedDestination}" is an absolute path, so images go to "${DEFAULT_IMAGE_DESTINATION}" instead. Set markdownClipboard.imageDestination to a path relative to the document.`,
+        `Paste as Markdown: cannot use "${settings.rejected.configured}" as the image destination (${REJECTION_TEXT[settings.rejected.reason]}), so images go to "${DEFAULT_IMAGE_DESTINATION}" instead.`,
       );
     }
 
@@ -2354,7 +2549,7 @@ export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider
     try {
       result = await convert(html, {
         imageDestination: settings.imageDestination,
-        canSaveImages: document.uri.scheme !== 'untitled',
+        canSaveImages,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -2692,7 +2887,9 @@ Copy from a web page, Word, Google Docs or Notion, then run **Markdown Clipboard
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `markdownClipboard.imageDestination` | `assets` | Folder for embedded images, relative to the document's folder. `..` is allowed; empty means the document's own folder; absolute paths are rejected. |
+| `markdownClipboard.imageDestination` | `assets` | Folder for embedded images. A plain path is relative to the document's folder (`..` is allowed; empty means the document's own folder). Absolute paths are rejected. |
+
+The destination may start with `${workspaceFolder}` (the workspace folder containing the document) or `${documentDirName}` (the document's folder), and may contain `${documentBaseName}` (the document's name without extension). Links are always written relative to the document, so `${workspaceFolder}/assets` pasted into `docs/guide/intro.md` gives `![](../../assets/image-….png)`.
 
 ## Keybinding
 
