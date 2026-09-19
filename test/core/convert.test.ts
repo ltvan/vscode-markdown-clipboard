@@ -90,3 +90,26 @@ describe('convert: lists', () => {
     expect(result.markdown).not.toContain('\n\n');
   });
 });
+
+describe('convert: unsafe link and image targets', () => {
+  it.each([
+    ['an iframe', '<iframe src="javascript:alert(1)" title="click me"></iframe>', 'click me'],
+    ['a video', '<video src="javascript:alert(1)" title="play">go</video>', 'go'],
+    ['an audio element', '<audio src="vbscript:msgbox(1)" title="listen">go</audio>', 'go'],
+  ])('keeps the text of %s and drops the target', async (_name, html, text) => {
+    const result = await convert(html, save);
+    expect(result.markdown).not.toMatch(/javascript:|vbscript:/);
+    expect(result.markdown).toBe(text);
+  });
+
+  it('drops an unsafe image, and the link it leaves empty, alt text and all', async () => {
+    const result = await convert('<video poster="javascript:alert(1)">cap</video>', save);
+    expect(result.markdown).toBe('');
+  });
+
+  it('still links an embedded image that was saved', async () => {
+    const result = await convert(`<img alt="p" src="${png}">`, save);
+    expect(result.markdown).toBe('![p](assets/image-c414cd0e204de974.png)');
+    expect(result.images).toHaveLength(1);
+  });
+});
