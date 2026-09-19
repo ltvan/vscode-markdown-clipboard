@@ -7,7 +7,7 @@ const REASON_TEXT: Record<DropReason, (count: number) => string> = {
   'cannot-save': (n) =>
     `${n} embedded ${n === 1 ? 'image' : 'images'} that cannot be saved because the document has no folder`,
   'unsafe-svg': (n) =>
-    `${n} SVG ${n === 1 ? 'image' : 'images'} with scripts or external references`,
+    `${n} SVG ${n === 1 ? 'image' : 'images'} that did not pass the safety check`,
   'name-collision': (n) => `${n} whose file name collided with another image`,
 };
 

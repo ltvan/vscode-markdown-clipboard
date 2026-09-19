@@ -23,7 +23,7 @@ export async function convert(html: string, options: ConvertOptions): Promise<Co
     // <u> has no Markdown equivalent: keep its text, not an emphasis
     .use(rehypeRemark, { handlers: { u: (state, node) => state.all(node) } })
     // after rehypeRemark: <iframe>, <video> and friends only become links there
-    .use(() => (tree: MdastRoot) => dropUnsafeTargets(tree))
+    .use(() => (tree: MdastRoot) => dropUnsafeTargets(tree, collected.dropped))
     .use(() => (tree: MdastRoot) => tightenLists(tree))
     .use(remarkGfm)
     .use(remarkStringify, {

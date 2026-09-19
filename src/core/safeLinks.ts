@@ -1,5 +1,6 @@
 import type { Root } from 'mdast';
 import { visit } from 'unist-util-visit';
+import type { DroppedImage } from './types';
 
 /**
  * Renderers other than VS Code's preview may not block these schemes, so the target goes
@@ -15,10 +16,11 @@ function hasUnsafeScheme(url: string): boolean {
   return /^(javascript|vbscript|data):/.test(target);
 }
 
-export function dropUnsafeTargets(tree: Root): void {
+export function dropUnsafeTargets(tree: Root, dropped: DroppedImage[]): void {
   visit(tree, (node, index, parent) => {
     if (!parent || index === undefined) return undefined;
     if (node.type === 'image' && hasUnsafeScheme(node.url)) {
+      dropped.push({ source: node.url.slice(0, 40), reason: 'unsupported-source' });
       parent.children.splice(index, 1);
       return index;
     }

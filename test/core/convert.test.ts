@@ -137,4 +137,17 @@ describe('convert: unsafe link and image targets', () => {
     expect(result.markdown).toBe('![p](assets/image-c414cd0e204de974.png)');
     expect(result.images).toHaveLength(1);
   });
+
+  it('reports an image removed for an unsafe target', async () => {
+    const result = await convert('<video poster="data:image/png;base64,AAAA">cap</video>', save);
+    expect(result.dropped).toEqual([
+      { source: 'data:image/png;base64,AAAA', reason: 'unsupported-source' },
+    ]);
+  });
+
+  it('does not report a link merely unwrapped for an unsafe target', async () => {
+    const result = await convert('<a href="javascript:alert(1)">click</a>', save);
+    expect(result.markdown).toBe('click');
+    expect(result.dropped).toEqual([]);
+  });
 });

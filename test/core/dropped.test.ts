@@ -21,4 +21,10 @@ describe('summarizeDropped', () => {
       'Paste as Markdown: 1 image was not pasted (1 of an unsupported type).',
     );
   });
+
+  it('describes a rejected SVG without claiming why it failed', () => {
+    expect(summarizeDropped([{ source: 'a', reason: 'unsafe-svg' }])).toBe(
+      'Paste as Markdown: 1 image was not pasted (1 SVG image that did not pass the safety check).',
+    );
+  });
 });
