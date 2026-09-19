@@ -26,7 +26,6 @@ describe('isCleanSvg', () => {
     ['an internal xlink:use', '<svg><use xlink:href="#a"/></svg>'],
     ['a byte-order mark', '﻿<svg><rect width="1" height="1"/></svg>'],
     ['an xml declaration', '<?xml version="1.0" encoding="UTF-8"?><svg><circle r="1"/></svg>'],
-    ['a leading comment', '<!-- drawn by hand --><svg><line x1="0" y1="0" x2="1" y2="1"/></svg>'],
     [
       'a filter chain',
       '<svg><filter id="f"><feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/></feMerge></filter></svg>',
@@ -75,6 +74,21 @@ describe('isCleanSvg', () => {
     [
       'a url token spelled with a CSS escape',
       '<svg><rect style="fill:u\\72 l(https://evil/x)"/></svg>',
+    ],
+    ['a leading comment', '<!-- drawn by hand --><svg><line x1="0" y1="0" x2="1" y2="1"/></svg>'],
+    ['a trailing comment', '<svg><rect/><!-- c --></svg>'],
+    ['an ambiguous comment close hiding a script', '<svg><!--><script>alert(1)</script>--></svg>'],
+    [
+      'a comment ended by --!> hiding a script',
+      '<svg><!-- x --!><script>alert(1)</script> --></svg>',
+    ],
+    [
+      'a comment ended by --!> hiding an external image',
+      '<svg><!-- --!><image href="https://evil/x.png"/> --></svg>',
+    ],
+    [
+      'a comment opened inside an attribute value',
+      '<svg><rect title="<!--"/><script>alert(1)</script><!-- --></svg>',
     ],
   ])('rejects %s', (_name, source) => {
     expect(isCleanSvg(svg(source))).toBe(false);

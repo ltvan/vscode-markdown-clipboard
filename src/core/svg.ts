@@ -72,7 +72,6 @@ const REFERENCE = /(?:xlink:)?(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*
 const URL_ARGUMENT = /url\(\s*["']?\s*([^)"']*)/g;
 /** An `on…=` attribute, recognised by what may precede an attribute name. */
 const EVENT_HANDLER = /[\s"'/]on[a-z]+\s*=/;
-const COMMENT = /<!--[\s\S]*?-->/g;
 /** An XML declaration, as opposed to any other processing instruction. */
 const XML_DECLARATION = /^<\?xml[\s?]/;
 /** A character reference inside a tag, which can spell an attribute name these checks would miss. */
@@ -89,8 +88,9 @@ export function isCleanSvg(bytes: Uint8Array): boolean {
   if (text.includes('\u0000')) return false;
   const source = (text.startsWith('﻿') ? text.slice(1) : text).toLowerCase();
 
-  if (source.includes('<!doctype') || source.includes('<!entity')) return false;
-  if (source.includes('<![cdata[')) return false;
+  // `<!` opens a comment, doctype, CDATA section or entity — an HTML parser can end any
+  // of these in a place this file would not expect, so none of them is worth parsing
+  if (source.includes('<!')) return false;
   if (source.includes('@import') || source.includes('attributename')) return false;
   if (source.includes('javascript:') || source.includes('data:')) return false;
   if (EVENT_HANDLER.test(source)) return false;
@@ -105,26 +105,20 @@ export function isCleanSvg(bytes: Uint8Array): boolean {
   }
   if ((source.match(/<\?/g) ?? []).length !== declarations) return false;
 
-  // comments may lead too, and the root element must be an unprefixed <svg>
-  while (rest.startsWith('<!--')) {
-    const end = rest.indexOf('-->');
-    if (end < 0) return false;
-    rest = rest.slice(end + 3).trimStart();
-  }
+  // the root element must be an unprefixed <svg>
   if (!/^<svg[\s/>]/.test(rest)) return false;
 
-  const body = rest.replace(COMMENT, ' ');
   // `on&#x6c;oad=` is an event handler once parsed, and `u\72 l(…)` is a url() once parsed:
   // neither spelling is worth supporting, and both would walk past the checks below
-  if (REFERENCE_IN_TAG.test(body) || body.includes('\\')) return false;
-  for (const [, name] of body.matchAll(TAG)) {
+  if (REFERENCE_IN_TAG.test(rest) || rest.includes('\\')) return false;
+  for (const [, name] of rest.matchAll(TAG)) {
     if (!ALLOWED_TAGS.has(name ?? '')) return false;
   }
-  for (const match of body.matchAll(REFERENCE)) {
+  for (const match of rest.matchAll(REFERENCE)) {
     const value = match[1] ?? match[2] ?? match[3] ?? '';
     if (!value.trim().startsWith('#')) return false;
   }
-  for (const match of body.matchAll(URL_ARGUMENT)) {
+  for (const match of rest.matchAll(URL_ARGUMENT)) {
     if (!(match[1] ?? '').startsWith('#')) return false;
   }
   return true;
