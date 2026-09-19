@@ -49,8 +49,9 @@ function promoteFirstRowToHeader(table: Element): void {
   let firstRow: Element | undefined;
   visit(table, 'element', (node) => {
     if (node !== table && node.tagName === 'table') return SKIP;
-    if (node.tagName === 'th') hasHeader = true;
     if (node.tagName === 'tr') firstRow ??= node;
+    // only the first row can become the header, so a <th> in a later row is not one
+    if (node.tagName === 'th' && firstRow?.children.includes(node)) hasHeader = true;
     return undefined;
   });
   if (hasHeader || !firstRow) return;

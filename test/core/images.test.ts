@@ -13,6 +13,21 @@ describe('decodeDataUri', () => {
     expect(decoded?.mime).toBe('image/svg+xml');
     expect(new TextDecoder().decode(decoded?.bytes)).toBe('<svg/>');
   });
+  it('decodes a percent-encoded payload byte for byte, not as UTF-8 text', () => {
+    const bytes = decodeDataUri(`data:image/png;base64,${PNG_BASE64}`)!.bytes;
+    const escaped = Array.from(
+      bytes,
+      (byte) => `%${byte.toString(16).padStart(2, '0').toUpperCase()}`,
+    ).join('');
+    const decoded = decodeDataUri(`data:image/png,${escaped}`);
+    expect(decoded?.bytes.length).toBe(70);
+    expect([...(decoded?.bytes ?? [])]).toEqual([...bytes]);
+  });
+  it('decodes escapes above 0x7f', () => {
+    expect([...(decodeDataUri('data:image/jpeg,%FF%D8%FF')?.bytes ?? [])]).toEqual([
+      0xff, 0xd8, 0xff,
+    ]);
+  });
   it('lower-cases the MIME type and tolerates whitespace in base64', () => {
     expect(
       decodeDataUri(`data:IMAGE/PNG;base64,${PNG_BASE64.slice(0, 40)}\n${PNG_BASE64.slice(40)}`)
