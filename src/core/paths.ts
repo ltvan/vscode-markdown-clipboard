@@ -3,7 +3,7 @@ export function isAbsoluteDestination(destination: string): boolean {
 }
 
 export type DestinationFailure =
-  'absolute' | 'unknown-variable' | 'misplaced-variable' | 'no-workspace';
+  'absolute' | 'unknown-variable' | 'misplaced-variable' | 'no-workspace' | 'invalid-character';
 
 export interface DocumentLocation {
   /** File name without extension. */
@@ -17,6 +17,17 @@ export type ResolvedDestination =
 
 const WORKSPACE_FOLDER = '${workspaceFolder}';
 const DOCUMENT_DIR = '${documentDirName}';
+const DOCUMENT_BASE_NAME = '${documentBaseName}';
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
+/** Stands in for the document's base name while the template is checked. A template
+ * holding a control character is rejected, so this can never clash with its text. */
+const BASE_NAME_MARK = '\u0001';
+
+/** The base name is data, not template: it may name one segment and nothing more. */
+function segmentOf(baseName: string): string {
+  const segment = baseName.replace(/[/\\\u0000-\u001f\u007f]/g, '');
+  return segment === '' || segment === '.' || segment === '..' ? '_' : segment;
+}
 
 function collapse(segments: string[]): string[] {
   const out: string[] = [];
@@ -32,7 +43,10 @@ export function resolveDestination(
   template: string,
   document: DocumentLocation,
 ): ResolvedDestination {
-  let rest = template.trim().replaceAll('${documentBaseName}', document.baseName);
+  const trimmed = template.trim();
+  if (CONTROL_CHARACTER.test(trimmed)) return { ok: false, reason: 'invalid-character' };
+  // the checks below run on the template alone: the base name must not decide its shape
+  let rest = trimmed.replaceAll(DOCUMENT_BASE_NAME, BASE_NAME_MARK);
   let fromWorkspace = false;
   if (rest.startsWith(WORKSPACE_FOLDER)) {
     fromWorkspace = true;
@@ -47,7 +61,10 @@ export function resolveDestination(
   }
   if (/\$\{[^}]*\}/.test(rest)) return { ok: false, reason: 'unknown-variable' };
 
-  const target = collapse(destinationSegments(rest));
+  const baseName = segmentOf(document.baseName);
+  const target = collapse(
+    destinationSegments(rest).map((segment) => segment.replaceAll(BASE_NAME_MARK, baseName)),
+  );
   if (!fromWorkspace) return { ok: true, path: target.join('/') };
 
   const from = document.workspaceRelativeDir;

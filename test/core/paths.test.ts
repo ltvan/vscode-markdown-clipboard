@@ -48,8 +48,19 @@ describe('resolveDestination', () => {
     ['a/${workspaceFolder}', 'misplaced-variable'],
     ['x/${documentDirName}', 'misplaced-variable'],
     ['${fileName}/x', 'unknown-variable'],
+    ['assets\u0000/x', 'invalid-character'],
   ])('rejects %j as %s', (template, reason) => {
     expect(resolveDestination(template, doc)).toEqual({ ok: false, reason });
+  });
+
+  it.each([
+    ['..', '${documentBaseName}', '_'],
+    ['a/b', 'assets/${documentBaseName}', 'assets/ab'],
+    ['a\\b', 'assets/${documentBaseName}', 'assets/ab'],
+    ['.', '${documentBaseName}', '_'],
+    ['${workspaceFolder}', '${documentBaseName}', '${workspaceFolder}'],
+  ])('keeps a base name of %j inside one segment', (baseName, template, path) => {
+    expect(resolveDestination(template, { ...doc, baseName })).toEqual({ ok: true, path });
   });
 
   it('rejects ${workspaceFolder} for a document outside every workspace folder', () => {

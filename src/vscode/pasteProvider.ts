@@ -20,6 +20,7 @@ const REJECTION_TEXT: Record<DestinationFailure, string> = {
   'unknown-variable': 'it uses an unknown variable',
   'misplaced-variable': '${workspaceFolder} and ${documentDirName} are only allowed at the start',
   'no-workspace': 'the document is not inside a workspace folder',
+  'invalid-character': 'it contains a control character',
 };
 
 export class PasteAsMarkdownProvider implements vscode.DocumentPasteEditProvider {

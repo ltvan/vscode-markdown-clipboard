@@ -11,6 +11,16 @@ function tagsForStyle(style: string): string[] {
   return tags;
 }
 
+/**
+ * Renderers other than VS Code's preview may not block these, so the link goes and
+ * only its text stays. Whitespace and control characters are stripped first, because
+ * browsers ignore them inside a scheme.
+ */
+function hasUnsafeScheme(href: string): boolean {
+  const target = href.replace(/[\s\u0000-\u001f\u007f]/g, '').toLowerCase();
+  return /^(javascript|vbscript|data):/.test(target);
+}
+
 const isList = (node: ElementContent): node is Element =>
   node.type === 'element' && (node.tagName === 'ul' || node.tagName === 'ol');
 
@@ -77,6 +87,10 @@ export function clean(tree: Root): void {
     const style = styleOf(node);
     // Google Docs wraps the whole clipboard in <b style="font-weight:normal">
     if (node.tagName === 'b' && /font-weight:(normal|400)/.test(style)) {
+      parent.children.splice(index, 1, ...node.children);
+      return [SKIP, index];
+    }
+    if (node.tagName === 'a' && hasUnsafeScheme(String(node.properties['href'] ?? ''))) {
       parent.children.splice(index, 1, ...node.children);
       return [SKIP, index];
     }
