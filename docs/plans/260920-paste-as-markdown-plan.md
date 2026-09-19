@@ -309,7 +309,7 @@ describe('manifest', () => {
 
 Write this test and Step 9's stub now, run `pnpm test:unit`, and see it fail with `Cannot read properties of undefined (reading 'commands')`. Then add the `contributes` block shown in Step 1 to `package.json` and see it pass.
 
-- [ ] **Step 9: The stub file the vitest alias points at (needed by Step 8's run)**
+- [ ] **Step 9: The stub file the vitest alias points at (nothing imports `vscode` yet; write it now so Step 10's gates see a complete tree)**
 
 `test/adapter/vscodeStub.ts` (Task 6 fills it):
 
@@ -2653,6 +2653,7 @@ src/core/          pure TypeScript: no 'vscode', no file system, no network
 - ESLint enforces the core's purity (`eslint.config.mjs`): it may not import `vscode`, `fs`, `http`, `https`, `net`, nor use `fetch`.
 - The seam is `convert(html, options) → { markdown, images[], dropped[] }` in `src/core/convert.ts`. The core returns image bytes and names; the adapter decides where files go.
 - The conversion engine (unified: rehype-parse → rehype-remark → remark-gfm → remark-stringify) is an implementation detail of `convert()`.
+- Source-application quirks are fixed on the HTML tree (`src/core/html/`) before conversion; output-shape fixes (e.g. tight nested lists, `src/core/tightLists.ts`) are made on the Markdown tree after it.
 
 ## Cross-cutting rules
 
