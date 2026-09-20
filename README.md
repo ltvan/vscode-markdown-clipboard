@@ -48,6 +48,8 @@ pnpm format && pnpm lint && pnpm typecheck && pnpm test   # gates
 pnpm package        # build a .vsix
 ```
 
+To try the extension, open this folder in VS Code and press F5 (**Run Extension**): it builds the extension and opens a second VS Code window with it loaded. Open a Markdown file there, copy something from a web page, and run **Markdown Clipboard: Paste as Markdown**.
+
 The gates command's `pnpm test` step includes the e2e suite, which opens a VS Code window: that window needs keyboard focus for the tests to do anything, and the suite overwrites your system clipboard.
 
 Design: [docs/design-specs/extension.md](docs/design-specs/extension.md). Commit messages: [docs/git-convention.md](docs/git-convention.md).
