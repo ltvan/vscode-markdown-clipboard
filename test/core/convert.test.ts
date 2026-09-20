@@ -78,6 +78,28 @@ describe('convert: embedded images', () => {
   });
 });
 
+describe('convert: stray content between blocks', () => {
+  it('drops a paragraph holding only a non-breaking space', async () => {
+    const result = await convert('<p>a</p><p>&nbsp;</p><p>b</p>', save);
+    expect(result.markdown).toBe('a\n\nb');
+  });
+
+  it('drops a <br> sitting directly between block elements', async () => {
+    const result = await convert('<p>a</p><br><p>b</p>', save);
+    expect(result.markdown).toBe('a\n\nb');
+  });
+
+  it('keeps an image-only paragraph, even though its text is empty', async () => {
+    const result = await convert('<p><img alt="x" src="https://e.com/a.png"></p>', save);
+    expect(result.markdown).toBe('![x](https://e.com/a.png)');
+  });
+
+  it('keeps a <br> inside a paragraph as a real line break', async () => {
+    const result = await convert('<p>one<br>two</p>', save);
+    expect(result.markdown).toBe('one\\\ntwo');
+  });
+});
+
 describe('convert: lists', () => {
   it('keeps an item with two paragraphs loose', async () => {
     const result = await convert('<ul><li><p>a</p><p>b</p></li><li>c</li></ul>', save);

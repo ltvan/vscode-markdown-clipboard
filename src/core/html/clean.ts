@@ -1,4 +1,4 @@
-import type { Element, ElementContent, Root } from 'hast';
+import type { Element, ElementContent, Nodes, Root } from 'hast';
 import { SKIP, visit } from 'unist-util-visit';
 import { styleOf } from './style';
 
@@ -60,6 +60,41 @@ function promoteFirstRowToHeader(table: Element): void {
   }
 }
 
+const textOf = (node: Nodes): string =>
+  node.type === 'text' ? node.value : 'children' in node ? node.children.map(textOf).join('') : '';
+
+const containsImage = (node: Nodes): boolean =>
+  (node.type === 'element' && node.tagName === 'img') ||
+  ('children' in node && node.children.some(containsImage));
+
+// a <br> here is a real line break, not stray spacing between blocks
+const BR_SURVIVES_IN = new Set(['p', 'li', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+/**
+ * Drops the stray filler clipboard apps leave between real blocks: a `<p>` whose text is
+ * only whitespace and/or NBSP (Word's `<p><o:p>&nbsp;</o:p></p>`), and a `<br>` sitting
+ * directly between block elements rather than inside one (Google Docs). Runs after the
+ * main visit so `<o:p>` and the Google Docs `<b>` wrapper are already unwrapped down to
+ * their text/children — otherwise an empty paragraph's text would not yet be visible.
+ */
+function removeStrayEmptiness(tree: Root): void {
+  visit(tree, (node, index, parent) => {
+    if (!parent || index === undefined || node.type !== 'element') return undefined;
+    if (node.tagName === 'p' && !containsImage(node) && /^[\s\u00a0]*$/.test(textOf(node))) {
+      parent.children.splice(index, 1);
+      return [SKIP, index];
+    }
+    if (
+      node.tagName === 'br' &&
+      !(parent.type === 'element' && BR_SURVIVES_IN.has(parent.tagName))
+    ) {
+      parent.children.splice(index, 1);
+      return [SKIP, index];
+    }
+    return undefined;
+  });
+}
+
 /** Strips source-application markup that would otherwise leak into the Markdown. */
 export function clean(tree: Root): void {
   visit(tree, (node, index, parent) => {
@@ -103,4 +138,5 @@ export function clean(tree: Root): void {
     }
     return undefined;
   });
+  removeStrayEmptiness(tree);
 }
