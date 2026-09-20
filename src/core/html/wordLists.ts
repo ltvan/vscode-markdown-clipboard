@@ -1,6 +1,7 @@
-import type { Element, ElementContent, Nodes, Root } from 'hast';
+import type { Element, ElementContent, Root } from 'hast';
 import { visit } from 'unist-util-visit';
 import { styleOf } from './style';
+import { textOf } from './text';
 
 interface ListItem {
   level: number;
@@ -13,9 +14,6 @@ interface Frame {
   list: Element | undefined;
   lastItem: Element | undefined;
 }
-
-const textOf = (node: Nodes): string =>
-  node.type === 'text' ? node.value : 'children' in node ? node.children.map(textOf).join('') : '';
 
 const element = (tagName: string, children: ElementContent[]): Element => ({
   type: 'element',

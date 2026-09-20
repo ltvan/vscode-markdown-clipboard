@@ -98,6 +98,46 @@ describe('convert: stray content between blocks', () => {
     const result = await convert('<p>one<br>two</p>', save);
     expect(result.markdown).toBe('one\\\ntwo');
   });
+
+  it('drops two consecutive <br>s sitting between block elements', async () => {
+    const result = await convert('<p>a</p><br><br><p>b</p>', save);
+    expect(result.markdown).toBe('a\n\nb');
+  });
+
+  it('drops a <br> between nothing and a block at the start', async () => {
+    const result = await convert('<br><p>a</p>', save);
+    expect(result.markdown).toBe('a');
+  });
+
+  it('drops a <br> between a block and nothing at the end', async () => {
+    const result = await convert('<p>a</p><br>', save);
+    expect(result.markdown).toBe('a');
+  });
+
+  it('keeps a <br> between text inside a <div>, regardless of its parent tag', async () => {
+    const result = await convert('<div>a<br>b</div>', save);
+    expect(result.markdown).toBe('a\\\nb');
+  });
+
+  it('keeps a <br> between text at the root, regardless of its parent tag', async () => {
+    const result = await convert('a<br>b', save);
+    expect(result.markdown).toBe('a\\\nb');
+  });
+
+  it('keeps a <br> between text inside a <blockquote>, regardless of its parent tag', async () => {
+    const result = await convert('<blockquote>a<br>b</blockquote>', save);
+    expect(result.markdown).toBe('> a\\\n> b');
+  });
+
+  it('never alters a <br> inside a <pre>', async () => {
+    const result = await convert('<pre>line1<br>line2</pre>', save);
+    expect(result.markdown).toBe('```\nline1\nline2\n```');
+  });
+
+  it('never removes an empty paragraph inside a <pre>', async () => {
+    const result = await convert('<pre>code<p>&nbsp;</p>more</pre>', save);
+    expect(result.markdown).toBe('```\ncode\n\n \n\nmore\n```');
+  });
 });
 
 describe('convert: lists', () => {
