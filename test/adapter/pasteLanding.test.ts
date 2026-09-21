@@ -109,6 +109,17 @@ describe('PasteLandingWatcher', () => {
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
+  it('stops reporting once disposed mid-poll', async () => {
+    const watcher = new PasteLandingWatcher(options);
+    watcher.expect(doc, 'TEXT', { ...nothing, targets: [target] });
+    testing.fireDidChangeTextDocument(doc, ['TEXT']);
+    // let one poll elapse with the file still missing, then dispose mid-poll
+    await vi.advanceTimersByTimeAsync(options.intervalMs);
+    watcher.dispose();
+    await vi.runAllTimersAsync();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
   it('ignores other edits and other documents, and disarms itself if the edit is never applied', async () => {
     new PasteLandingWatcher(options).expect(doc, 'TEXT', { ...nothing, targets: [target] });
     testing.fireDidChangeTextDocument(doc, ['typing']);

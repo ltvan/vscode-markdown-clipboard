@@ -31,6 +31,8 @@ export class PasteLandingWatcher implements vscode.Disposable {
   private readonly armedMs: number;
   /** One pending watch per document and inserted text, so listeners cannot stack up. */
   private readonly pending = new Map<vscode.TextDocument, Map<string, () => void>>();
+  /** Set by `dispose()`; a `report()` already polling has no other way to hear about it. */
+  private disposed = false;
 
   constructor(options: PasteLandingOptions = {}) {
     this.intervalMs = options.intervalMs ?? 150;
@@ -53,6 +55,7 @@ export class PasteLandingWatcher implements vscode.Disposable {
         return;
       }
       disarm();
+      if (this.disposed) return;
       for (const warning of effects.warnings) void vscode.window.showWarningMessage(warning);
       if (effects.targets.length > 0) void this.report(effects.targets);
     });
@@ -68,6 +71,7 @@ export class PasteLandingWatcher implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const byText of [...this.pending.values()]) {
       for (const disarm of [...byText.values()]) disarm();
     }
@@ -78,9 +82,10 @@ export class PasteLandingWatcher implements vscode.Disposable {
     let missing = targets;
     for (let attempt = 0; attempt < this.attempts && missing.length > 0; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, this.intervalMs));
+      if (this.disposed) return;
       missing = await this.missingOf(missing);
     }
-    if (missing.length === 0) return;
+    if (this.disposed || missing.length === 0) return;
     const names = missing.map((uri) => uri.path.slice(uri.path.lastIndexOf('/') + 1)).join(', ');
     void vscode.window.showErrorMessage(
       `Paste as Markdown: could not save ${names}. The text was pasted; undo to revert it.`,
