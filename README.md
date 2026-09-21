@@ -2,7 +2,7 @@
 
 Paste rich clipboard content as Markdown — only when you ask for it.
 
-Copy from a web page, Word, Google Docs or Notion, then run **Markdown Clipboard: Paste as Markdown** from the Command Palette in a Markdown file. Headings, emphasis, links, lists, task lists, quotes, code, tables and images are converted. A normal paste (Ctrl/Cmd+V) is never changed. With no rich text on the clipboard, the command pastes the plain text unchanged.
+Copy from a web page, Word, Google Docs, Notion or VS Code's own Markdown preview, then run **Markdown Clipboard: Paste as Markdown** from the Command Palette in a Markdown file. Headings, emphasis, links, lists, task lists, quotes, code, tables and images are converted. A normal paste (Ctrl/Cmd+V) is never changed. With no rich text on the clipboard, the command pastes the plain text unchanged.
 
 Every conversion runs in the background, so VS Code stays responsive and the paste can be cancelled like any other.
 

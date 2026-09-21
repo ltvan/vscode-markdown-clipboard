@@ -24,6 +24,8 @@ function decodeEscapes(payload: string): Uint8Array<ArrayBuffer> | undefined {
       bytes[length++] = Number.parseInt(hex, 16);
       index += 2;
     } else {
+      // a literal non-ASCII character here is truncated to its low byte — such a payload
+      // is malformed anyway, since bytes above 0x7f must arrive percent-escaped
       bytes[length++] = payload.charCodeAt(index) & 0xff;
     }
   }

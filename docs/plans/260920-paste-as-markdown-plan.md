@@ -2948,6 +2948,7 @@ The tasks above are the plan as accepted. A code and security review after Task 
 - **Conversion runs in a worker thread** (`src/vscode/backgroundConvert.ts`, `src/vscode/convertWorker.ts`, second bundle `dist/convertWorker.js`) with a 512 MB memory ceiling; cancelling the paste terminates the worker; in-process conversion is the fallback where worker threads do not exist. The provider takes the converter as a constructor parameter.
 - **Manifest**: `capabilities.untrustedWorkspaces` restricts `markdownClipboard.imageDestination`.
 - **E2e tests need the VS Code test window to have keyboard focus**: `editor.action.pasteAs` does nothing otherwise. Run them on an idle machine or under a virtual display.
+- **Three cleanups surfaced by real captures.** The `real-word` and `real-google-docs` captures led to the emptiness cleanup rule (`removeStrayEmptiness`, now in `src/core/html/whitespace.ts`): a stray whitespace-only `<p>` or a `<br>` between blocks is dropped. The `real-markdown-preview` capture led to NBSP normalization (`normalizeNbsp`, same file) and to the `data-href` substitution for that preview's links, gated to webview `href` values only so an ordinary page's `data-href` is never trusted.
 
 ## Acceptance criteria coverage
 
