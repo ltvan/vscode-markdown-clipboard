@@ -93,6 +93,22 @@ const BLOCK_TAGS = new Set([
 const isWhitespaceText = (node: ElementContent): boolean =>
   node.type === 'text' && node.value.trim() === '';
 
+const isVerbatim = (node: Nodes): boolean =>
+  node.type === 'element' && (node.tagName === 'pre' || node.tagName === 'code');
+
+/**
+ * Chrome/VS Code copy the space around an inline element as a span holding a lone NBSP.
+ * Elsewhere it leaks U+00A0 into the Markdown where a reader expects an ordinary space.
+ * `<pre>` and `<code>` stay byte-identical: their content is verbatim.
+ */
+function normalizeNbsp(tree: Root): void {
+  visit(tree, (node) => {
+    if (isVerbatim(node)) return SKIP;
+    if (node.type === 'text') node.value = node.value.replace(/ /g, ' ');
+    return undefined;
+  });
+}
+
 const isBr = (node: ElementContent): boolean => node.type === 'element' && node.tagName === 'br';
 
 /** The nearest sibling in `direction` that isn't whitespace-only text or another `<br>`. */
@@ -172,6 +188,14 @@ export function clean(tree: Root): void {
       parent.children.splice(index, 1, ...node.children);
       return [SKIP, index];
     }
+    // VS Code's Markdown preview rewrites every href to the webview and keeps the real
+    // target in data-href; an unsafe target there is still caught by the guard that runs
+    // later on the Markdown tree, since it only ever sees the href we set here.
+    if (node.tagName === 'a' && 'dataHref' in node.properties) {
+      const dataHref = node.properties['dataHref'];
+      delete node.properties['dataHref'];
+      if (typeof dataHref === 'string' && dataHref !== '') node.properties['href'] = dataHref;
+    }
     if (isList(node)) adoptSiblingLists(node);
     if (node.tagName === 'table') promoteFirstRowToHeader(node);
     if (node.tagName === 'span') {
@@ -186,5 +210,6 @@ export function clean(tree: Root): void {
     }
     return undefined;
   });
+  normalizeNbsp(tree);
   removeStrayEmptiness(tree);
 }

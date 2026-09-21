@@ -213,3 +213,59 @@ describe('convert: unsafe link and image targets', () => {
     expect(result.dropped).toEqual([]);
   });
 });
+
+describe('convert: non-breaking spaces', () => {
+  it('turns the NBSP either side of an inline element into a regular space', async () => {
+    const result = await convert(
+      '<p>feature of the<span>&nbsp;</span><strong>Markdown Wiki Links</strong>' +
+        '<span>&nbsp;</span>extension</p>',
+      save,
+    );
+    expect(result.markdown).toBe('feature of the **Markdown Wiki Links** extension');
+    expect(result.markdown.includes(' ')).toBe(false);
+  });
+
+  it('turns an NBSP between words into a regular space', async () => {
+    const result = await convert('<p>10&nbsp;km</p>', save);
+    expect(result.markdown).toBe('10 km');
+  });
+
+  it('keeps an NBSP inside inline code', async () => {
+    const result = await convert('<p><code>a&nbsp;b</code></p>', save);
+    expect(result.markdown).toBe('`a b`');
+  });
+
+  it('keeps an NBSP inside a <pre> block', async () => {
+    const result = await convert('<pre>a&nbsp;b</pre>', save);
+    expect(result.markdown).toBe('```\na b\n```');
+  });
+});
+
+describe('convert: links copied from the VS Code Markdown preview', () => {
+  it('uses data-href as the link target instead of the webview href', async () => {
+    const result = await convert(
+      '<a href="https://file+.vscode-resource.vscode-cdn.net/Users/user/proj/README.md" ' +
+        'data-href="../../../../README.md">Sample Workspace</a>',
+      save,
+    );
+    expect(result.markdown).toBe('[Sample Workspace](../../../../README.md)');
+  });
+
+  it('still runs the unsafe-scheme guard against a data-href target', async () => {
+    const result = await convert(
+      '<a href="https://ok.example/" data-href="javascript:alert(1)">x</a>',
+      save,
+    );
+    expect(result.markdown).toBe('x');
+  });
+
+  it('leaves a link with no data-href unchanged', async () => {
+    const result = await convert('<a href="https://ok.example/">x</a>', save);
+    expect(result.markdown).toBe('[x](https://ok.example/)');
+  });
+
+  it('keeps the original href when data-href is empty', async () => {
+    const result = await convert('<a href="https://a.example/" data-href="">x</a>', save);
+    expect(result.markdown).toBe('[x](https://a.example/)');
+  });
+});
