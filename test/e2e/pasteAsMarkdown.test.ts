@@ -162,7 +162,8 @@ suite('Paste as Markdown', () => {
       const editor = await openFile('ac9/doc.md', '', [cursor(0, 0)]);
       seedClipboard({ html: `<img alt="p" src="${PNG_DATA_URI}">`, text: 'p' });
       await run();
-      await waitFor(() => messages.errors.length === 1, 'error message');
+      // the extension polls ~3 s for the file before it reports; slow machines need headroom
+      await waitFor(() => messages.errors.length === 1, 'error message', 20_000);
       assert.match(messages.errors[0]!, /could not save image-c414cd0e204de974\.png/);
       assert.strictEqual(editor.document.getText(), '![p](ro/image-c414cd0e204de974.png)');
       await vscode.commands.executeCommand('undo');
@@ -193,7 +194,9 @@ suite('Paste as Markdown', () => {
       'the whole payload',
       40_000,
     );
-    assert.strictEqual(editor.document.getText().length, paragraphs * 3 - 2);
+    // a new empty file gets the platform's line ending (CRLF on Windows)
+    const text = editor.document.getText().replace(/\r\n/g, '\n');
+    assert.strictEqual(text.length, paragraphs * 3 - 2);
     assert.deepStrictEqual(messages.errors, []);
   });
 
