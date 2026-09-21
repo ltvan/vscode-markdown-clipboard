@@ -37,6 +37,12 @@ export async function openFile(
   selections: vscode.Selection[],
 ): Promise<vscode.TextEditor> {
   const file = path.join(workspaceRoot(), relativePath);
+  // every test owns the first folder of its path; start from nothing so a retried test is not
+  // fooled by what its first attempt left behind
+  const testFolder = relativePath.split('/')[0];
+  if (testFolder && testFolder !== relativePath) {
+    fs.rmSync(path.join(workspaceRoot(), testFolder), { recursive: true, force: true });
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
   const editor = await vscode.window.showTextDocument(

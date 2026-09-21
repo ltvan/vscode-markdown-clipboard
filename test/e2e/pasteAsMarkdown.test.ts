@@ -71,6 +71,11 @@ suite('Paste as Markdown', () => {
     seedClipboard({ html: `<img alt="p" src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
     await waitFor(() => exists('ac5', 'assets', 'image-c414cd0e204de974.png'), 'image file');
+    // the file and the text land in either order, depending on the platform
+    await waitFor(
+      () => editor.document.getText() === '![p](assets/image-c414cd0e204de974.png)',
+      'pasted text',
+    );
     assert.strictEqual(editor.document.getText(), '![p](assets/image-c414cd0e204de974.png)');
     assert.ok(
       fs
@@ -98,17 +103,28 @@ suite('Paste as Markdown', () => {
       () => exists('ac6', 'media', 'img', 'image-c414cd0e204de974.png'),
       'image in media/img',
     );
+    // the file and the text land in either order, depending on the platform
+    await waitFor(
+      () => editor.document.getText() === '![](media/img/image-c414cd0e204de974.png)',
+      'pasted text',
+    );
     assert.strictEqual(editor.document.getText(), '![](media/img/image-c414cd0e204de974.png)');
   });
 
   test('AC6: ${workspaceFolder} puts images under the workspace root and links relative to the document', async () => {
     await setDestination('${workspaceFolder}/ac6-root/${documentBaseName}');
+    fs.rmSync(path.join(workspaceRoot(), 'ac6-root'), { recursive: true, force: true });
     const editor = await openFile('ac6vars/guide/intro.md', '', [cursor(0, 0)]);
     seedClipboard({ html: `<img src="${PNG_DATA_URI}">`, text: 'p' });
     await run();
     await waitFor(
       () => exists('ac6-root', 'intro', 'image-c414cd0e204de974.png'),
       'image under the workspace root',
+    );
+    // the file and the text land in either order, depending on the platform
+    await waitFor(
+      () => editor.document.getText() === '![](../../ac6-root/intro/image-c414cd0e204de974.png)',
+      'pasted text',
     );
     assert.strictEqual(
       editor.document.getText(),
@@ -154,12 +170,12 @@ suite('Paste as Markdown', () => {
 
   test('AC9(b): when the image cannot be saved, pastes the text, reports the image, and one undo reverts', async function () {
     if (process.platform === 'win32') this.skip(); // chmod cannot make a folder read-only on Windows
+    const editor = await openFile('ac9/doc.md', '', [cursor(0, 0)]);
     const readOnly = path.join(workspaceRoot(), 'ac9', 'ro');
     fs.mkdirSync(readOnly, { recursive: true });
     fs.chmodSync(readOnly, 0o555);
     try {
       await setDestination('ro');
-      const editor = await openFile('ac9/doc.md', '', [cursor(0, 0)]);
       seedClipboard({ html: `<img alt="p" src="${PNG_DATA_URI}">`, text: 'p' });
       await run();
       // the extension polls ~3 s for the file before it reports; slow machines need headroom
