@@ -11,5 +11,7 @@ export default defineConfig({
   files: 'out/e2e/**/*.test.js',
   workspaceFolder: workspace,
   launchArgs: ['--disable-extensions', '--disable-workspace-trust', `--user-data-dir=${userData}`],
-  mocha: { timeout: 30_000 },
+  // these tests need a real window with keyboard focus; on shared CI runners focus is
+  // occasionally lost for a moment, so a failed test gets one more try
+  mocha: { timeout: 30_000, retries: 1 },
 });

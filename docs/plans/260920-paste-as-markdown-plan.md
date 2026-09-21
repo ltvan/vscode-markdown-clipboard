@@ -1,6 +1,6 @@
 # Paste as Markdown — implementation plan
 
-Status: accepted (2026-09-20)
+Status: implemented (2026-09-21)
 
 **Goal:** Ship a VS Code extension with one explicit command, Paste as Markdown, that converts clipboard HTML (including embedded images) to Markdown in Markdown documents.
 
