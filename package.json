@@ -4,6 +4,7 @@
   "description": "Paste rich clipboard content as Markdown, only when you ask for it.",
   "version": "0.1.0",
   "publisher": "ltvan",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/ltvan/vscode-markdown-clipboard.git"
@@ -64,7 +65,7 @@
     "test:unit": "vitest run",
     "test:e2e": "pnpm build && tsc -p test/e2e && vscode-test",
     "test": "pnpm test:unit && pnpm test:e2e",
-    "package": "node esbuild.mjs --production && vsce package --no-dependencies --skip-license"
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies"
   },
   "dependencies": {
     "rehype-parse": "^9.0.1",
