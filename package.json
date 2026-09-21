@@ -2,7 +2,7 @@
   "name": "markdown-clipboard",
   "displayName": "Markdown Clipboard",
   "description": "Paste rich clipboard content as Markdown, only when you ask for it.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "ltvan",
   "repository": {
     "type": "git",
