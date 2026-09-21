@@ -15,6 +15,15 @@ function tagsForStyle(style: string): string[] {
 const isList = (node: ElementContent): node is Element =>
   node.type === 'element' && (node.tagName === 'ul' || node.tagName === 'ol');
 
+/** The webview resource URL VS Code's own Markdown preview rewrites every href to. */
+const PREVIEW_RESOURCE_HREF = /^https:\/\/file\+\.[^/]*vscode-resource\.vscode-cdn\.net\//;
+
+const isWebviewHref = (href: unknown): boolean =>
+  typeof href === 'string' &&
+  (PREVIEW_RESOURCE_HREF.test(href) ||
+    href.startsWith('vscode-webview:') ||
+    href.startsWith('vscode-resource:'));
+
 /** Google Docs puts a nested list next to its parent item, not inside it. */
 function adoptSiblingLists(list: Element): void {
   const children: ElementContent[] = [];
@@ -61,9 +70,22 @@ function promoteFirstRowToHeader(table: Element): void {
   }
 }
 
-const containsImage = (node: Nodes): boolean =>
-  (node.type === 'element' && node.tagName === 'img') ||
-  ('children' in node && node.children.some(containsImage));
+// elements a browser replaces with external content: a paragraph holding only one of
+// these has real content even though its text is empty
+const EMBEDDED_TAGS = new Set([
+  'img',
+  'iframe',
+  'video',
+  'audio',
+  'embed',
+  'object',
+  'picture',
+  'svg',
+]);
+
+const containsEmbeddedElement = (node: Nodes): boolean =>
+  (node.type === 'element' && EMBEDDED_TAGS.has(node.tagName)) ||
+  ('children' in node && node.children.some(containsEmbeddedElement));
 
 // tags whose boundary is a real break on its own, so a <br> right against one is redundant
 const BLOCK_TAGS = new Set([
@@ -130,19 +152,21 @@ const isBlockOrAbsent = (node: ElementContent | undefined): boolean =>
 
 /**
  * Drops the stray filler clipboard apps leave between real blocks: a `<p>` whose text is
- * only whitespace (Word's `<p><o:p>&nbsp;</o:p></p>`; `\s` already matches NBSP), and a
- * `<br>` with a block element, or nothing, on both sides (Google Docs). A `<br>` next to
- * real text or an inline element is a genuine line break and must survive regardless of
- * what its *parent* is — deciding by parent tag alone would delete a soft break inside a
- * `<div>` or at the root. Never descends into a `<pre>`: its content is verbatim. Runs
- * after the main visit so `<o:p>` and the Google Docs `<b>` wrapper are already unwrapped
- * down to their text/children — otherwise an empty paragraph's text would not yet be visible.
+ * only whitespace (Word's `<p><o:p>&nbsp;</o:p></p>`; `\s` already matches NBSP) and which
+ * holds no embedded element (an `<iframe>`, `<video>` and the like have real content even
+ * with no text of their own), and a `<br>` with a block element, or nothing, on both sides
+ * (Google Docs). A `<br>` next to real text or an inline element is a genuine line break
+ * and must survive regardless of what its *parent* is — deciding by parent tag alone would
+ * delete a soft break inside a `<div>` or at the root. Never descends into a `<pre>`: its
+ * content is verbatim. Runs after the main visit so `<o:p>` and the Google Docs `<b>`
+ * wrapper are already unwrapped down to their text/children — otherwise an empty
+ * paragraph's text would not yet be visible.
  */
 function removeStrayEmptiness(tree: Root): void {
   visit(tree, (node, index, parent) => {
     if (!parent || index === undefined || node.type !== 'element') return undefined;
     if (node.tagName === 'pre') return SKIP;
-    if (node.tagName === 'p' && !containsImage(node) && /^\s*$/.test(textOf(node))) {
+    if (node.tagName === 'p' && !containsEmbeddedElement(node) && /^\s*$/.test(textOf(node))) {
       parent.children.splice(index, 1);
       return [SKIP, index];
     }
@@ -189,12 +213,21 @@ export function clean(tree: Root): void {
       return [SKIP, index];
     }
     // VS Code's Markdown preview rewrites every href to the webview and keeps the real
-    // target in data-href; an unsafe target there is still caught by the guard that runs
-    // later on the Markdown tree, since it only ever sees the href we set here.
+    // target in data-href. Only VS Code's preview does this, so the substitution is gated
+    // on the current href already being one of its webview URLs — otherwise any web page
+    // could show one target in href and ship another, attacker-controlled one in
+    // data-href. An unsafe target there is still caught by the guard that runs later on
+    // the Markdown tree, since it only ever sees the href we set here.
     if (node.tagName === 'a' && 'dataHref' in node.properties) {
       const dataHref = node.properties['dataHref'];
       delete node.properties['dataHref'];
-      if (typeof dataHref === 'string' && dataHref !== '') node.properties['href'] = dataHref;
+      if (
+        typeof dataHref === 'string' &&
+        dataHref.trim() !== '' &&
+        isWebviewHref(node.properties['href'])
+      ) {
+        node.properties['href'] = dataHref;
+      }
     }
     if (isList(node)) adoptSiblingLists(node);
     if (node.tagName === 'table') promoteFirstRowToHeader(node);

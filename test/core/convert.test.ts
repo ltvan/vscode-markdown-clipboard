@@ -134,6 +134,29 @@ describe('convert: stray content between blocks', () => {
     expect(result.markdown).toBe('```\nline1\nline2\n```');
   });
 
+  it('keeps a paragraph holding only an iframe, matching the unwrapped form', async () => {
+    const iframe =
+      '<iframe width="560" src="https://www.youtube.com/embed/x" title="Video"></iframe>';
+    const wrapped = await convert(`<p>Intro</p><p>${iframe}</p><p>Outro</p>`, save);
+    expect(wrapped.markdown).toBe('Intro\n\n[Video](https://www.youtube.com/embed/x)\n\nOutro');
+    const unwrapped = await convert(iframe, save);
+    expect(unwrapped.markdown).toBe('[Video](https://www.youtube.com/embed/x)');
+  });
+
+  it('keeps a paragraph holding only an audio element, matching the unwrapped form', async () => {
+    const audio = '<audio src="https://e/a.mp3" title="listen"></audio>';
+    const wrapped = await convert(`<p>${audio}</p>`, save);
+    const unwrapped = await convert(audio, save);
+    expect(wrapped.markdown).toBe(unwrapped.markdown);
+  });
+
+  it('keeps a paragraph holding only a video element, matching the unwrapped form', async () => {
+    const video = '<video src="https://e/v.mp4" title="play">go</video>';
+    const wrapped = await convert(`<p>${video}</p>`, save);
+    const unwrapped = await convert(video, save);
+    expect(wrapped.markdown).toBe(unwrapped.markdown);
+  });
+
   it('never removes an empty paragraph inside a <pre>', async () => {
     const result = await convert('<pre>code<p>&nbsp;</p>more</pre>', save);
     expect(result.markdown).toBe('```\ncode\n\n \n\nmore\n```');
@@ -251,9 +274,10 @@ describe('convert: links copied from the VS Code Markdown preview', () => {
     expect(result.markdown).toBe('[Sample Workspace](../../../../README.md)');
   });
 
-  it('still runs the unsafe-scheme guard against a data-href target', async () => {
+  it('still runs the unsafe-scheme guard against a data-href target on a webview link', async () => {
     const result = await convert(
-      '<a href="https://ok.example/" data-href="javascript:alert(1)">x</a>',
+      '<a href="https://file+.vscode-resource.vscode-cdn.net/x/y.md" ' +
+        'data-href="javascript:alert(1)">x</a>',
       save,
     );
     expect(result.markdown).toBe('x');
@@ -267,5 +291,50 @@ describe('convert: links copied from the VS Code Markdown preview', () => {
   it('keeps the original href when data-href is empty', async () => {
     const result = await convert('<a href="https://a.example/" data-href="">x</a>', save);
     expect(result.markdown).toBe('[x](https://a.example/)');
+  });
+
+  it('does not trust data-href on a link whose href is not a webview URL', async () => {
+    const result = await convert(
+      '<a href="https://good.example/" data-href="https://evil.example/">x</a>',
+      save,
+    );
+    expect(result.markdown).toBe('[x](https://good.example/)');
+  });
+
+  it('keeps the href when data-href is whitespace-only on a webview link', async () => {
+    const result = await convert(
+      '<a href="https://file+.vscode-resource.vscode-cdn.net/x/y.md" data-href="   ">x</a>',
+      save,
+    );
+    expect(result.markdown).toBe('[x](https://file+.vscode-resource.vscode-cdn.net/x/y.md)');
+  });
+
+  it.each(['data:text/html,x', 'vbscript:x'])(
+    'still drops an unsafe data-href target on a webview link (%s)',
+    async (unsafe) => {
+      const result = await convert(
+        `<a href="https://file+.vscode-resource.vscode-cdn.net/x/y.md" data-href="${unsafe}">x</a>`,
+        save,
+      );
+      expect(result.markdown).toBe('x');
+    },
+  );
+
+  it('recognizes a vscode-webview: or vscode-resource: href as a webview link too', async () => {
+    const webview = await convert(
+      '<a href="vscode-webview://abc/x" data-href="../../README.md">a</a>',
+      save,
+    );
+    expect(webview.markdown).toBe('[a](../../README.md)');
+    const resource = await convert(
+      '<a href="vscode-resource://abc/x" data-href="../../README.md">b</a>',
+      save,
+    );
+    expect(resource.markdown).toBe('[b](../../README.md)');
+  });
+
+  it('ignores data-href on a non-anchor element', async () => {
+    const result = await convert('<div data-href="https://evil.example/">x</div>', save);
+    expect(result.markdown).toBe('x');
   });
 });
