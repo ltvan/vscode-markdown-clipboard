@@ -6,6 +6,9 @@ $data = New-Object System.Windows.Forms.DataObject
 if ($null -ne $spec.html) {
   $fragment = "<html><body><!--StartFragment-->$($spec.html)<!--EndFragment--></body></html>"
   $header = "Version:0.9`r`nStartHTML:{0:D10}`r`nEndHTML:{1:D10}`r`nStartFragment:{2:D10}`r`nEndFragment:{3:D10}`r`n"
+  # CF_HTML offsets are byte offsets, but .Length below counts .NET characters (UTF-16 code
+  # units); the two coincide only for an ASCII payload, so a non-ASCII $spec.html would seed
+  # a clipboard with offsets that do not line up with the actual byte positions.
   $headerLength = ($header -f 0, 0, 0, 0).Length
   $startFragment = $headerLength + $fragment.IndexOf('<!--StartFragment-->') + 20
   $endFragment = $headerLength + $fragment.IndexOf('<!--EndFragment-->')

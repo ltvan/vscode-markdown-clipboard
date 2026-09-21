@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_IMAGE_DESTINATION } from '../../src/vscode/settings';
 
 const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
@@ -24,7 +25,7 @@ describe('manifest', () => {
   it('declares the image destination as a resource-scoped setting defaulting to assets', () => {
     const setting =
       manifest.contributes.configuration.properties['markdownClipboard.imageDestination'];
-    expect(setting.default).toBe('assets');
+    expect(setting.default).toBe(DEFAULT_IMAGE_DESTINATION);
     expect(setting.scope).toBe('resource');
   });
 

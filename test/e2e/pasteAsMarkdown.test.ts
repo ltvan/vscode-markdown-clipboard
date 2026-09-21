@@ -182,7 +182,7 @@ suite('Paste as Markdown', () => {
     assert.deepStrictEqual(fs.readdirSync(path.join(workspaceRoot(), 'ac10')), ['note.txt']);
   });
 
-  test('AC9(a): converts a clipboard far larger than a hand-written paste', async function () {
+  test('converts a clipboard far larger than a hand-written paste, in the background worker', async function () {
     this.timeout(60_000);
     const paragraphs = 40_000;
     const editor = await openFile('big/doc.md', '', [cursor(0, 0)]);
