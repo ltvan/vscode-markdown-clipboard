@@ -1525,7 +1525,7 @@ These tests are written before the adapter exists and must be seen failing. Noth
 
 **Files:**
 
-- Modify: `package.json` (scripts), `CLAUDE.md` (the `Quality gates:` line)
+- Modify: `package.json` (scripts), the contributor guide (its `Quality gates:` line)
 - Create: `.vscode-test.mjs`, `test/e2e/tsconfig.json`, `test/e2e/clipboard.ts`, `test/e2e/harness.ts`, `test/e2e/pasteAsMarkdown.test.ts`, `test/e2e/normalPaste.test.ts`
 
 **Interfaces:**
@@ -1981,7 +1981,7 @@ Run: `pnpm test:e2e` — Expected: VS Code is downloaded on first run and a wind
 - The three `Normal paste is never converted` tests and the `Raw image paste stays with VS Code` test PASS already: they describe VS Code's own behavior, which the extension must not disturb. If one of them fails now, the clipboard helper or a "Verified fact" is wrong — stop and report to the owner before going on.
 - The "does nothing" tests (AC10(b), AC11 in the first suite) fail only because the command does not exist.
 
-- [ ] **Step 8: Fill the quality gates line in `CLAUDE.md`**
+- [ ] **Step 8: Fill the quality gates line in the contributor guide**
 
 Replace the `Quality gates:` line with:
 
@@ -2643,7 +2643,7 @@ If a test fails because VS Code behaves differently from the spec's "Verified fa
 ```bash
 git add src test/adapter
 git commit -m "feat: add paste as markdown command and paste edit provider"
-git add package.json .vscode-test.mjs test/e2e CLAUDE.md
+git add package.json .vscode-test.mjs test/e2e   # plus the contributor guide
 git commit -m "test: add e2e tests for paste as markdown on macOS"
 ```
 
