@@ -1,0 +1,6 @@
+**
+!dist/extension.js
+!dist/convertWorker.js
+!package.json
+!README.md
+!LICENSE

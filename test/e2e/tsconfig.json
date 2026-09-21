@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "outDir": "../../out/e2e",
+    "rootDir": ".",
+    "types": ["node", "mocha", "vscode"]
+  },
+  "include": ["*.ts"]
+}
